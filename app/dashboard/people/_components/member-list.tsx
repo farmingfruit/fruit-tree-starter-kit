@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +37,8 @@ import {
   Plus,
   Phone,
   Mail,
-  User
+  User,
+  X
 } from "lucide-react";
 import MemberProfileDialog from "./member-profile-dialog";
 import AddMemberDialog from "./add-member-dialog";
@@ -46,74 +48,74 @@ import { MemberWithFamily } from "@/lib/people-data";
 const mockMembers = [
   {
     id: "1",
-    firstName: "John",
-    lastName: "Smith",
-    email: "john.smith@email.com",
+    firstName: "Fred",
+    lastName: "Flintstone",
+    email: "fred.flintstone@bedrock.com",
     mobilePhone: "(555) 123-4567",
     workPhone: "(555) 123-4568",
     membershipStatus: "Active",
     membershipRole: "Member",
-    familyName: "Smith Family",
+    familyName: "Flintstone Family",
     joinDate: new Date("2020-01-15"),
     photoUrl: null,
     dateOfBirth: new Date("1985-03-15"),
     gender: "Male",
     maritalStatus: "Married",
-    address: "123 Main St",
-    city: "Springfield",
-    state: "IL",
-    zipCode: "62701",
-    emergencyContactName: "Jane Smith",
+    address: "123 Cobblestone Way",
+    city: "Bedrock",
+    state: "CA",
+    zipCode: "90210",
+    emergencyContactName: "Wilma Flintstone",
     emergencyContactPhone: "(555) 123-4569",
-    occupation: "Software Engineer",
-    employer: "Tech Corp",
-    notes: "Active in youth ministry. Plays guitar in worship team.",
+    occupation: "Quarry Worker",
+    employer: "Slate Rock & Gravel Co",
+    notes: "Active in men's ministry. Enjoys bowling.",
   },
   {
     id: "2",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.johnson@email.com",
+    firstName: "Pebbles",
+    lastName: "Flintstone",
+    email: "pebbles.flintstone@bedrock.com",
     mobilePhone: "(555) 987-6543",
     membershipStatus: "Active",
-    membershipRole: "Elder",
-    familyName: "Johnson Family",
+    membershipRole: "Member",
+    familyName: "Flintstone Family",
     joinDate: new Date("2018-06-20"),
     photoUrl: null,
-    dateOfBirth: new Date("1978-09-22"),
+    dateOfBirth: new Date("2010-09-22"),
     gender: "Female",
     maritalStatus: "Single",
-    address: "456 Oak Ave",
-    city: "Springfield",
-    state: "IL",
-    zipCode: "62702",
-    emergencyContactName: "Robert Johnson",
+    address: "123 Cobblestone Way",
+    city: "Bedrock",
+    state: "CA",
+    zipCode: "90210",
+    emergencyContactName: "Fred Flintstone",
     emergencyContactPhone: "(555) 987-6544",
-    occupation: "Teacher",
-    employer: "Springfield Elementary",
-    notes: "Leads women's Bible study group. Excellent with children's ministry.",
+    occupation: "Student",
+    employer: "Bedrock Elementary",
+    notes: "Youth group participant. Loves dinosaur facts.",
   },
   {
     id: "3",
-    firstName: "Mike",
-    lastName: "Davis",
-    email: "mike.davis@email.com",
+    firstName: "Barney",
+    lastName: "Rubble",
+    email: "barney.rubble@bedrock.com",
     mobilePhone: "(555) 456-7890",
-    membershipStatus: "Visitor",
-    membershipRole: "Visitor",
-    familyName: "Davis Family",
-    joinDate: new Date("2024-01-10"),
+    membershipStatus: "Active",
+    membershipRole: "Deacon",
+    familyName: "Rubble Family",
+    joinDate: new Date("2019-01-10"),
     photoUrl: null,
-    dateOfBirth: new Date("1992-12-05"),
+    dateOfBirth: new Date("1987-12-05"),
     gender: "Male",
-    maritalStatus: "Single",
-    address: "789 Pine St",
-    city: "Springfield",
-    state: "IL",
-    zipCode: "62703",
-    occupation: "Marketing Manager",
-    employer: "Local Business",
-    notes: "Recently started attending. Interested in joining small group.",
+    maritalStatus: "Married",
+    address: "124 Cobblestone Way",
+    city: "Bedrock",
+    state: "CA",
+    zipCode: "90210",
+    occupation: "Construction Worker",
+    employer: "Slate Rock & Gravel Co",
+    notes: "Fred's best friend and neighbor. Helps with church maintenance.",
   },
 ];
 
@@ -140,28 +142,56 @@ interface MemberListProps {
 
 export default function MemberList({ initialMembers }: MemberListProps) {
   const [members] = useState(initialMembers);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  
+  const searchParams = useSearchParams();
+  
+  // Handle URL highlighting from search navigation
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight) {
+      setHighlightId(highlight);
+      // Clear highlight after 3 seconds
+      const timer = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
-  const filteredMembers = members.filter((member) => {
-    const matchesSearch = 
-      member.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (member.mobilePhone && member.mobilePhone.includes(searchTerm));
-
-    const matchesStatus = statusFilter === "all" || member.membershipStatus === statusFilter;
-    const matchesRole = roleFilter === "all" || member.membershipRole === roleFilter;
-
-    return matchesSearch && matchesStatus && matchesRole;
-  });
+  // Real-time filtering with search, status, and role filters
+  const filteredMembers = useMemo(() => {
+    return members.filter((member) => {
+      // Status and role filters
+      const matchesStatus = statusFilter === "all" || member.membershipStatus === statusFilter;
+      const matchesRole = roleFilter === "all" || member.membershipRole === roleFilter;
+      
+      // Search filter - robust handling with trimming and full name support
+      let matchesSearch = true;
+      if (searchQuery.trim() !== "") {
+        const trimmedQuery = searchQuery.trim().toLowerCase();
+        const fullName = `${member.firstName} ${member.lastName}`.toLowerCase();
+        
+        matchesSearch = 
+          member.firstName.toLowerCase().includes(trimmedQuery) ||
+          member.lastName.toLowerCase().includes(trimmedQuery) ||
+          fullName.includes(trimmedQuery) ||
+          member.email?.toLowerCase().includes(trimmedQuery) ||
+          member.mobilePhone?.toLowerCase().includes(trimmedQuery) ||
+          member.workPhone?.toLowerCase().includes(trimmedQuery) ||
+          member.familyName?.toLowerCase().includes(trimmedQuery);
+      }
+      
+      return matchesStatus && matchesRole && matchesSearch;
+    });
+  }, [members, statusFilter, roleFilter, searchQuery]);
 
   const getInitials = (firstName: string, lastName: string) => {
     return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase();
   };
 
-  if (filteredMembers.length === 0 && searchTerm === "" && statusFilter === "all" && roleFilter === "all") {
+  if (members.length === 0) {
     return (
       <div className="border rounded-lg p-12 text-center">
         <Users className="mx-auto h-16 w-16 mb-4 text-muted-foreground/50" />
@@ -183,14 +213,28 @@ export default function MemberList({ initialMembers }: MemberListProps) {
     <div className="space-y-4">
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            placeholder="Search members by name, email, or phone..."
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        {/* Search Input */}
+        <div className="flex-1">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              placeholder="Search members by name, email, or phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-12 pl-12 pr-12 text-lg border-2 focus:border-primary"
+              style={{ fontSize: '18px' }} // Elderly-friendly font size
+            />
+            {searchQuery && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 rounded-full hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
         
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -226,7 +270,12 @@ export default function MemberList({ initialMembers }: MemberListProps) {
       {/* Results Count */}
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">
-          {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} found
+          {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} {(searchQuery || statusFilter !== "all" || roleFilter !== "all") ? 'found' : 'total'}
+          {searchQuery && (
+            <span className="ml-1 text-primary font-medium">
+              for "{searchQuery}"
+            </span>
+          )}
         </p>
         <AddMemberDialog>
           <Button>
@@ -239,11 +288,32 @@ export default function MemberList({ initialMembers }: MemberListProps) {
       {/* Members Table */}
       {filteredMembers.length === 0 ? (
         <div className="border rounded-lg p-8 text-center">
-          <Search className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
-          <h3 className="text-lg font-medium mb-2">No members found</h3>
-          <p className="text-muted-foreground">
-            Try adjusting your search terms or filters.
+          <Users className="mx-auto h-12 w-12 mb-4 text-muted-foreground/50" />
+          <h3 className="text-lg font-medium mb-2">
+            {searchQuery ? 'No members found' : 'No members match your filters'}
+          </h3>
+          <p className="text-muted-foreground mb-4">
+            {searchQuery 
+              ? `No members found matching "${searchQuery}". Try a different search term or clear the search.`
+              : "Try adjusting the status or role filters above."
+            }
           </p>
+          <div className="flex gap-2 justify-center">
+            {searchQuery && (
+              <Button 
+                variant="outline" 
+                onClick={() => setSearchQuery("")}
+              >
+                Clear Search
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              onClick={() => {setStatusFilter("all"); setRoleFilter("all"); setSearchQuery("");}}
+            >
+              Clear All Filters
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="border rounded-lg">
@@ -262,7 +332,11 @@ export default function MemberList({ initialMembers }: MemberListProps) {
             <TableBody>
               {filteredMembers.map((member) => (
                 <MemberProfileDialog key={member.id} member={member}>
-                  <TableRow className="cursor-pointer hover:bg-muted/50">
+                  <TableRow className={`cursor-pointer hover:bg-muted/50 transition-colors ${
+                    highlightId === member.id 
+                      ? "bg-primary/10 border-l-4 border-l-primary animate-pulse" 
+                      : ""
+                  }`}>
                     <TableCell>
                       <div className="flex items-center space-x-3">
                         <Avatar className="h-10 w-10">
