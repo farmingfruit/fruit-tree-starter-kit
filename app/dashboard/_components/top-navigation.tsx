@@ -8,10 +8,12 @@ import {
   HomeIcon,
   LucideIcon,
   Menu,
+  MessageSquare,
   Settings,
   Users,
   UsersRound,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import UserProfile from "@/components/user-profile";
@@ -52,6 +54,12 @@ const topNavItems: TopNavItem[] = [
     basePath: "/dashboard/giving",
   },
   {
+    label: "Messaging",
+    href: "/dashboard/messaging",
+    icon: MessageSquare,
+    basePath: "/dashboard/messaging",
+  },
+  {
     label: "Forms",
     href: "/dashboard/forms",
     icon: FileText,
@@ -80,6 +88,9 @@ const topNavItems: TopNavItem[] = [
 export default function TopNavigation() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Mock unread message count - in real app this would come from context/API
+  const unreadMessageCount = 3;
 
   const isActiveSection = (basePath: string) => {
     if (basePath === "/dashboard") {
@@ -117,7 +128,17 @@ export default function TopNavigation() {
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
-                  <item.icon className="h-4 w-4" />
+                  <div className="relative">
+                    <item.icon className="h-4 w-4" />
+                    {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
+                      <Badge 
+                        variant="destructive" 
+                        className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
+                      >
+                        {unreadMessageCount}
+                      </Badge>
+                    )}
+                  </div>
                   {item.label}
                 </Link>
               ))}
@@ -148,7 +169,17 @@ export default function TopNavigation() {
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <div className="relative">
+                <item.icon className="h-4 w-4" />
+                {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
+                  >
+                    {unreadMessageCount}
+                  </Badge>
+                )}
+              </div>
               {item.label}
             </Link>
           ))}

@@ -38,8 +38,8 @@ const navItems: NavItem[] = [
     icon: Heart,
   },
   {
-    label: "Chat",
-    href: "/dashboard/chat",
+    label: "Messaging",
+    href: "/dashboard/messaging",
     icon: MessageCircleIcon,
   },
   {

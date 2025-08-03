@@ -17,6 +17,11 @@ import {
   BarChart4,
   UserCheck,
   Zap,
+  MessageSquare,
+  Send,
+  Inbox,
+  Archive,
+  Hash,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -152,6 +157,47 @@ const subNavConfig: SubNavSection[] = [
         href: "/dashboard/calendar",
         icon: User,
         description: "Church calendar and events",
+      },
+    ],
+  },
+  {
+    section: "messaging",
+    items: [
+      {
+        label: "Inbox",
+        href: "/dashboard/messaging",
+        icon: Inbox,
+        description: "View messages and conversations",
+      },
+      {
+        label: "Compose",
+        href: "/dashboard/messaging/compose",
+        icon: Send,
+        description: "Send new email or text message",
+      },
+      {
+        label: "Sent Messages",
+        href: "/dashboard/messaging/sent",
+        icon: Archive,
+        description: "View messages you've sent",
+      },
+      {
+        label: "Templates",
+        href: "/dashboard/messaging/templates",
+        icon: FileText,
+        description: "Manage reusable message templates",
+      },
+      {
+        label: "Keywords",
+        href: "/dashboard/messaging/keywords",
+        icon: Hash,
+        description: "SMS automation keywords",
+      },
+      {
+        label: "Settings",
+        href: "/dashboard/messaging/settings",
+        icon: Settings2,
+        description: "Messaging configuration",
       },
     ],
   },
