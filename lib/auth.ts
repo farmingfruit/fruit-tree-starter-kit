@@ -194,3 +194,19 @@ export const auth = betterAuth({
     nextCookies(),
   ],
 });
+
+/**
+ * Get the current authenticated user
+ * This is a temporary implementation to fix import errors
+ */
+export async function getCurrentUser() {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers()
+    });
+    return session?.user || null;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+}

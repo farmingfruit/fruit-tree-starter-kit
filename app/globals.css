@@ -106,6 +106,9 @@
         @apply bg-background text-foreground font-sans;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        /* Better text sizing for older adults */
+        font-size: 16px;
+        line-height: 1.6;
     }
     button,
     input,
@@ -123,5 +126,47 @@
     h5,
     h6 {
         @apply font-medium tracking-tight;
+    }
+}
+
+@layer components {
+    /* Church Administrator Touch Targets */
+    .touch-target {
+        min-height: 44px; /* Apple's recommended minimum touch target */
+        min-width: 44px;
+    }
+    
+    /* Enhanced focus for accessibility */
+    .church-focus:focus {
+        @apply ring-4 ring-primary/30 ring-offset-2;
+    }
+    
+    /* Large text mode for church staff */
+    .church-large-text {
+        font-size: 18px !important;
+        line-height: 1.7;
+    }
+    
+    /* High contrast mode for better readability */
+    .church-high-contrast {
+        --foreground: #000000;
+        --background: #ffffff;
+        --muted-foreground: #374151;
+    }
+    
+    /* Tablet-optimized spacing */
+    @media (min-width: 768px) and (max-width: 1024px) {
+        .tablet-spacing {
+            padding: 1.5rem;
+        }
+        .tablet-text {
+            font-size: 17px;
+        }
+    }
+    
+    /* Better touch scrolling for search results */
+    .touch-scroll {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
     }
 }

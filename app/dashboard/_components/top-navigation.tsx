@@ -103,6 +103,7 @@ export default function TopNavigation() {
             <SheetHeader>
               <SheetTitle>ChurchOS</SheetTitle>
             </SheetHeader>
+            
             <nav className="flex flex-col space-y-2 mt-6">
               {topNavItems.map((item) => (
                 <Link
@@ -152,6 +153,7 @@ export default function TopNavigation() {
             </Link>
           ))}
         </nav>
+
 
         {/* Right Side */}
         <div className="ml-auto flex items-center space-x-4">

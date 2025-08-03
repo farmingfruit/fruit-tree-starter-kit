@@ -721,3 +721,32 @@ async function queueForAdminReview(
   
   return queueId;
 }
+
+// ============================================================================
+// Class Wrapper for Backward Compatibility
+// ============================================================================
+
+/**
+ * Progressive Recognition Engine Class
+ * Provides a class-based interface for the recognition functions above
+ */
+export class ProgressiveRecognitionEngine {
+  /**
+   * Recognize user based on submission data
+   */
+  async recognizeUser(
+    submissionData: Partial<RecognitionInput>,
+    options: { churchId: string }
+  ): Promise<{ confidence: number; memberId?: string }> {
+    const result = await performProgressiveRecognition(
+      options.churchId,
+      submissionData as RecognitionInput,
+      { includeFamily: true, respectPrivacy: true }
+    );
+    
+    return {
+      confidence: result.confidence,
+      memberId: result.match?.memberId
+    };
+  }
+}

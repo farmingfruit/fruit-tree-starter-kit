@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, Download, Filter } from "lucide-react";
+import { Search, Download, Filter, Heart, X } from "lucide-react";
 import { formatAmountForDisplay } from "@/lib/stripe-utils";
 
 interface Donation {
@@ -57,12 +58,25 @@ interface TransactionHistoryProps {
 
 export default function TransactionHistory({ refreshTrigger }: TransactionHistoryProps) {
   const [donations, setDonations] = useState<Donation[]>([]);
-  const [filteredDonations, setFilteredDonations] = useState<Donation[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [methodFilter, setMethodFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  
+  const searchParams = useSearchParams();
+  
+  // Handle URL highlighting from search navigation
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight) {
+      setHighlightId(highlight);
+      // Clear highlight after 3 seconds
+      const timer = setTimeout(() => setHighlightId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // Fetch donations from API
   useEffect(() => {
@@ -94,32 +108,26 @@ export default function TransactionHistory({ refreshTrigger }: TransactionHistor
     }
   }, [refreshTrigger]);
 
-  useEffect(() => {
-    let filtered = donations;
-
-    if (searchTerm) {
-      filtered = filtered.filter(donation => 
-        donation.donorFirstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        donation.donorLastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        donation.donorEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        donation.notes.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(donation => donation.status === statusFilter);
-    }
-
-    if (methodFilter !== "all") {
-      filtered = filtered.filter(donation => donation.method === methodFilter);
-    }
-
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter(donation => donation.categoryId === categoryFilter);
-    }
-
-    setFilteredDonations(filtered);
-  }, [donations, searchTerm, statusFilter, methodFilter, categoryFilter]);
+  // Real-time filtering with search and other filters
+  const filteredDonations = useMemo(() => {
+    return donations.filter(donation => {
+      // Status, method, and category filters
+      const matchesStatus = statusFilter === "all" || donation.status === statusFilter;
+      const matchesMethod = methodFilter === "all" || donation.method === methodFilter;
+      const matchesCategory = categoryFilter === "all" || donation.categoryId === categoryFilter;
+      
+      // Search filter - case insensitive partial matching
+      const matchesSearch = searchQuery === "" || 
+        donation.donorFirstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        donation.donorLastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        donation.donorEmail?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        donation.notes?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        donation.amount.toString().includes(searchQuery) ||
+        new Date(donation.createdAt).toLocaleDateString().includes(searchQuery);
+      
+      return matchesStatus && matchesMethod && matchesCategory && matchesSearch;
+    });
+  }, [donations, statusFilter, methodFilter, categoryFilter, searchQuery]);
 
   const handleExport = () => {
     // TODO: Implement CSV export functionality
@@ -148,16 +156,30 @@ export default function TransactionHistory({ refreshTrigger }: TransactionHistor
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Filters */}
+        {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by donor name, email, or notes..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          {/* Search Input */}
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                placeholder="Search by donor name, amount, notes, or date..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 pl-12 pr-12 text-lg border-2 focus:border-primary"
+                style={{ fontSize: '18px' }} // Elderly-friendly font size
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 rounded-full hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
           
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -229,16 +251,63 @@ export default function TransactionHistory({ refreshTrigger }: TransactionHistor
                 </TableRow>
               ) : filteredDonations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    {donations.length === 0 
-                      ? "No transactions recorded yet. Create your first donation to see it here."
-                      : "No transactions found matching your criteria."
-                    }
+                  <TableCell colSpan={7} className="text-center py-8">
+                    <div className="flex flex-col items-center gap-3">
+                      <Heart className="h-12 w-12 text-muted-foreground/50" />
+                      <div>
+                        <h3 className="text-lg font-medium mb-2">
+                          {donations.length === 0 
+                            ? "No donations recorded yet" 
+                            : searchQuery 
+                              ? "No donations found" 
+                              : "No donations match your filters"
+                          }
+                        </h3>
+                        <p className="text-muted-foreground mb-4">
+                          {donations.length === 0 
+                            ? "Create your first donation to see it here."
+                            : searchQuery 
+                              ? `No donations found matching "${searchQuery}". Try a different search term or clear the search.`
+                              : "Try adjusting the filters above."
+                          }
+                        </p>
+                        {donations.length > 0 && (
+                          <div className="flex gap-2">
+                            {searchQuery && (
+                              <Button 
+                                variant="outline" 
+                                onClick={() => setSearchQuery("")}
+                              >
+                                Clear Search
+                              </Button>
+                            )}
+                            <Button 
+                              variant="outline" 
+                              onClick={() => {
+                                setStatusFilter("all");
+                                setMethodFilter("all");
+                                setCategoryFilter("all");
+                                setSearchQuery("");
+                              }}
+                            >
+                              Clear All Filters
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredDonations.map((donation) => (
-                  <TableRow key={donation.id}>
+                  <TableRow 
+                    key={donation.id}
+                    className={`transition-colors ${
+                      highlightId === donation.id 
+                        ? "bg-primary/10 border-l-4 border-l-primary animate-pulse" 
+                        : ""
+                    }`}
+                  >
                     <TableCell>
                       {new Date(donation.createdAt).toLocaleDateString()}
                     </TableCell>
@@ -286,6 +355,11 @@ export default function TransactionHistory({ refreshTrigger }: TransactionHistor
           <div className="mt-4 flex justify-between items-center text-sm text-muted-foreground">
             <span>
               Showing {filteredDonations.length} of {donations.length} transactions
+              {searchQuery && (
+                <span className="ml-1 text-primary font-medium">
+                  for "{searchQuery}"
+                </span>
+              )}
             </span>
             <span>
               Total: {formatAmountForDisplay(

@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, UsersRound } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, UsersRound, Search } from "lucide-react";
 
 export default async function GroupsPage() {
   const result = await getSessionWithDevBypass(await headers());
@@ -30,6 +31,22 @@ export default async function GroupsPage() {
               Create Group
             </Button>
           </div>
+        </div>
+
+        {/* Search Box - Ready for when groups are implemented */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              placeholder="Search groups by name or description..."
+              className="h-12 pl-12 text-lg border-2 focus:border-primary"
+              style={{ fontSize: '18px' }} // Elderly-friendly font size
+              disabled
+            />
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            Search will be enabled once groups are created
+          </p>
         </div>
 
         <div className="grid gap-6">

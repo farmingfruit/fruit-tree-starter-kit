@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formsPeopleIntegration, FormSubmissionData } from "@/lib/forms-people-integration";
-import { getCurrentUser } from "@/lib/auth";
 
 /**
  * API endpoint for form submission with People database integration

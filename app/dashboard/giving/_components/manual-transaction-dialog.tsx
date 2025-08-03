@@ -129,7 +129,7 @@ export default function ManualTransactionDialog({ open, onClose, onSuccess }: Ma
         isAnonymous: false,
         notes: '',
         checkNumber: '',
-        transactionDate: new Date(),
+        transactionDate: new Date().toISOString().split('T')[0],
       });
     } finally {
       setLoading(false);

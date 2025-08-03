@@ -950,3 +950,371 @@ export const donationFormSubmissions = sqliteTable("donation_form_submissions", 
   donationIdIdx: index("donation_form_submissions_donation_id_idx").on(table.donationId),
   formIdIdx: index("donation_form_submissions_form_id_idx").on(table.formId),
 }));
+
+// ===========================================================================
+// EMAIL/SMS MESSAGING SYSTEM TABLES
+// ===========================================================================
+
+// Church communication settings
+export const communicationSettings = sqliteTable("communication_settings", {
+  id: text("id").primaryKey(),
+  churchId: text("churchId").notNull().references(() => churches.id, { onDelete: "cascade" }),
+  
+  // Email settings
+  emailSubdomain: text("emailSubdomain"), // e.g., "mail.firstbaptist.org"
+  emailFromName: text("emailFromName"), // Default "from" name
+  emailReplyTo: text("emailReplyTo"), // Where replies should go
+  emailSignature: text("emailSignature"),
+  
+  // Email service configuration
+  emailServiceProvider: text("emailServiceProvider").default("sendgrid"), // sendgrid, postmark, ses
+  emailApiKey: text("emailApiKey"),
+  emailWebhookSecret: text("emailWebhookSecret"),
+  
+  // DNS verification status
+  dnsSpfRecord: text("dnsSpfRecord"),
+  dnsDkimRecord: text("dnsDkimRecord"),
+  dnsDmarcRecord: text("dnsDmarcRecord"),
+  dnsVerificationStatus: text("dnsVerificationStatus").default("pending"), // pending, verified, failed
+  dnsLastChecked: integer("dnsLastChecked", { mode: "timestamp" }),
+  
+  // SMS settings
+  smsPhoneNumber: text("smsPhoneNumber"), // Twilio phone number
+  smsProvider: text("smsProvider").default("twilio"),
+  smsApiKey: text("smsApiKey"),
+  smsApiSecret: text("smsApiSecret"),
+  smsAccountSid: text("smsAccountSid"),
+  
+  // SMS features
+  enableTwoWaySms: integer("enableTwoWaySms", { mode: "boolean" }).notNull().default(true),
+  smsAutoReply: text("smsAutoReply"), // Auto-reply message
+  smsQuietHoursStart: text("smsQuietHoursStart").default("21:00"), // 9 PM
+  smsQuietHoursEnd: text("smsQuietHoursEnd").default("08:00"), // 8 AM
+  
+  // Rate limiting
+  emailDailyLimit: integer("emailDailyLimit").default(1000),
+  smsDailyLimit: integer("smsDailyLimit").default(500),
+  emailMonthlyUsage: integer("emailMonthlyUsage").default(0),
+  smsMonthlyUsage: integer("smsMonthlyUsage").default(0),
+  
+  // Compliance settings
+  enableUnsubscribeLink: integer("enableUnsubscribeLink", { mode: "boolean" }).notNull().default(true),
+  unsubscribeText: text("unsubscribeText").default("Reply STOP to unsubscribe"),
+  privacyPolicyUrl: text("privacyPolicyUrl"),
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  churchIdIdx: index("communication_settings_church_id_idx").on(table.churchId),
+  emailSubdomainIdx: index("communication_settings_email_subdomain_idx").on(table.emailSubdomain),
+  smsPhoneIdx: index("communication_settings_sms_phone_idx").on(table.smsPhoneNumber),
+}));
+
+// Message templates for reusable content
+export const messageTemplates = sqliteTable("message_templates", {
+  id: text("id").primaryKey(),
+  churchId: text("churchId").notNull().references(() => churches.id, { onDelete: "cascade" }),
+  
+  // Template identity
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"), // "announcement", "welcome", "reminder", "emergency", "stewardship"
+  
+  // Template content
+  messageType: text("messageType").notNull(), // "email", "sms", "both"
+  emailSubject: text("emailSubject"),
+  emailContent: text("emailContent"), // HTML content
+  smsContent: text("smsContent"), // Plain text, 160 chars recommended
+  
+  // Template settings
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  isSystemTemplate: integer("isSystemTemplate", { mode: "boolean" }).notNull().default(false),
+  useCount: integer("useCount").notNull().default(0),
+  
+  // Merge fields available
+  availableMergeFields: text("availableMergeFields"), // JSON array of merge field names
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  lastUsed: integer("lastUsed", { mode: "timestamp" }),
+}, (table) => ({
+  churchIdIdx: index("message_templates_church_id_idx").on(table.churchId),
+  categoryIdx: index("message_templates_category_idx").on(table.category),
+  typeIdx: index("message_templates_type_idx").on(table.messageType),
+  activeIdx: index("message_templates_active_idx").on(table.isActive),
+}));
+
+// Main messages table for sent communications
+export const messages = sqliteTable("messages", {
+  id: text("id").primaryKey(),
+  churchId: text("churchId").notNull().references(() => churches.id, { onDelete: "cascade" }),
+  templateId: text("templateId").references(() => messageTemplates.id, { onDelete: "set null" }),
+  
+  // Message identity
+  type: text("type").notNull(), // "email", "sms"
+  status: text("status").notNull().default("draft"), // draft, scheduled, sending, sent, failed, cancelled
+  
+  // Content
+  subject: text("subject"), // For emails only
+  content: text("content").notNull(), // HTML for email, plain text for SMS
+  
+  // Sender information
+  fromName: text("fromName"),
+  fromEmail: text("fromEmail"), // For email
+  fromPhone: text("fromPhone"), // For SMS
+  replyTo: text("replyTo"),
+  
+  // Targeting
+  recipientType: text("recipientType").notNull(), // "all_members", "active_members", "visitors", "custom_selection", "individual"
+  recipientCount: integer("recipientCount").notNull().default(0),
+  recipientFilter: text("recipientFilter"), // JSON criteria for recipient selection
+  
+  // Scheduling
+  scheduledFor: integer("scheduledFor", { mode: "timestamp" }),
+  sentAt: integer("sentAt", { mode: "timestamp" }),
+  
+  // Tracking
+  deliveredCount: integer("deliveredCount").notNull().default(0),
+  openedCount: integer("openedCount").notNull().default(0), // Email only
+  clickedCount: integer("clickedCount").notNull().default(0), // Email only
+  repliedCount: integer("repliedCount").notNull().default(0), // SMS only
+  failedCount: integer("failedCount").notNull().default(0),
+  unsubscribedCount: integer("unsubscribedCount").notNull().default(0),
+  
+  // Cost tracking (for SMS)
+  estimatedCost: integer("estimatedCost"), // Cost in cents
+  actualCost: integer("actualCost"), // Actual cost in cents
+  
+  // Metadata
+  campaignId: text("campaignId"), // For grouping related messages
+  tags: text("tags"), // JSON array of tags
+  notes: text("notes"),
+  
+  // Created by
+  createdBy: text("createdBy").references(() => user.id, { onDelete: "set null" }),
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  churchIdIdx: index("messages_church_id_idx").on(table.churchId),
+  statusIdx: index("messages_status_idx").on(table.status),
+  typeIdx: index("messages_type_idx").on(table.type),
+  scheduledIdx: index("messages_scheduled_idx").on(table.scheduledFor),
+  sentAtIdx: index("messages_sent_at_idx").on(table.sentAt),
+  campaignIdx: index("messages_campaign_idx").on(table.campaignId),
+}));
+
+// Individual message recipients and their delivery status
+export const messageRecipients = sqliteTable("message_recipients", {
+  id: text("id").primaryKey(),
+  messageId: text("messageId").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  memberId: text("memberId").references(() => members.id, { onDelete: "set null" }),
+  
+  // Recipient details
+  email: text("email"), // For email messages
+  phone: text("phone"), // For SMS messages
+  firstName: text("firstName"),
+  lastName: text("lastName"),
+  
+  // Delivery tracking
+  status: text("status").notNull().default("pending"), // pending, sent, delivered, opened, clicked, failed, bounced, unsubscribed
+  
+  // External service IDs
+  providerMessageId: text("providerMessageId"), // ID from email/SMS service
+  
+  // Delivery details
+  sentAt: integer("sentAt", { mode: "timestamp" }),
+  deliveredAt: integer("deliveredAt", { mode: "timestamp" }),
+  openedAt: integer("openedAt", { mode: "timestamp" }), // Email only
+  firstClickedAt: integer("firstClickedAt", { mode: "timestamp" }), // Email only
+  repliedAt: integer("repliedAt", { mode: "timestamp" }), // SMS only
+  
+  // Error tracking
+  errorCode: text("errorCode"),
+  errorMessage: text("errorMessage"),
+  retryCount: integer("retryCount").notNull().default(0),
+  lastRetry: integer("lastRetry", { mode: "timestamp" }),
+  
+  // Personalization
+  personalizedContent: text("personalizedContent"), // Content with merge fields filled
+  mergeData: text("mergeData"), // JSON of merge field values used
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  messageIdIdx: index("message_recipients_message_id_idx").on(table.messageId),
+  memberIdIdx: index("message_recipients_member_id_idx").on(table.memberId),
+  statusIdx: index("message_recipients_status_idx").on(table.status),
+  emailIdx: index("message_recipients_email_idx").on(table.email),
+  phoneIdx: index("message_recipients_phone_idx").on(table.phone),
+  providerIdIdx: index("message_recipients_provider_id_idx").on(table.providerMessageId),
+}));
+
+// SMS conversations for two-way messaging
+export const smsConversations = sqliteTable("sms_conversations", {
+  id: text("id").primaryKey(),
+  churchId: text("churchId").notNull().references(() => churches.id, { onDelete: "cascade" }),
+  memberId: text("memberId").references(() => members.id, { onDelete: "set null" }),
+  
+  // Conversation participants
+  churchPhone: text("churchPhone").notNull(), // Church's SMS number
+  memberPhone: text("memberPhone").notNull(), // Member's phone number
+  memberName: text("memberName"), // For display purposes
+  
+  // Conversation metadata
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  lastMessageAt: integer("lastMessageAt", { mode: "timestamp" }),
+  messageCount: integer("messageCount").notNull().default(0),
+  unreadCount: integer("unreadCount").notNull().default(0), // Unread messages from member
+  
+  // Status
+  status: text("status").notNull().default("active"), // active, archived, blocked
+  
+  // Auto-reply settings
+  autoReplyEnabled: integer("autoReplyEnabled", { mode: "boolean" }).notNull().default(true),
+  lastAutoReply: integer("lastAutoReply", { mode: "timestamp" }),
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  churchIdIdx: index("sms_conversations_church_id_idx").on(table.churchId),
+  memberIdIdx: index("sms_conversations_member_id_idx").on(table.memberId),
+  churchPhoneIdx: index("sms_conversations_church_phone_idx").on(table.churchPhone),
+  memberPhoneIdx: index("sms_conversations_member_phone_idx").on(table.memberPhone),
+  statusIdx: index("sms_conversations_status_idx").on(table.status),
+  lastMessageIdx: index("sms_conversations_last_message_idx").on(table.lastMessageAt),
+}));
+
+// Individual SMS messages within conversations
+export const smsMessages = sqliteTable("sms_messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversationId").notNull().references(() => smsConversations.id, { onDelete: "cascade" }),
+  messageId: text("messageId").references(() => messages.id, { onDelete: "set null" }), // Link to bulk message if applicable
+  
+  // Message details
+  direction: text("direction").notNull(), // "inbound", "outbound"
+  content: text("content").notNull(),
+  
+  // Sender/receiver info
+  fromPhone: text("fromPhone").notNull(),
+  toPhone: text("toPhone").notNull(),
+  
+  // Provider details
+  providerMessageId: text("providerMessageId"), // Twilio SID
+  providerId: text("providerId"), // Which provider sent this
+  
+  // Message status
+  status: text("status").notNull().default("pending"), // pending, sent, delivered, failed, received
+  
+  // Delivery tracking
+  sentAt: integer("sentAt", { mode: "timestamp" }),
+  deliveredAt: integer("deliveredAt", { mode: "timestamp" }),
+  readAt: integer("readAt", { mode: "timestamp" }), // When admin marked as read
+  
+  // Error tracking
+  errorCode: text("errorCode"),
+  errorMessage: text("errorMessage"),
+  
+  // Message type
+  messageType: text("messageType").default("text"), // text, media, auto_reply
+  mediaUrls: text("mediaUrls"), // JSON array of media URLs
+  
+  // Cost
+  cost: integer("cost"), // Cost in cents
+  
+  // Auto-reply
+  isAutoReply: integer("isAutoReply", { mode: "boolean" }).notNull().default(false),
+  triggeredBy: text("triggeredBy"), // What triggered the auto-reply
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  conversationIdIdx: index("sms_messages_conversation_id_idx").on(table.conversationId),
+  messageIdIdx: index("sms_messages_message_id_idx").on(table.messageId),
+  directionIdx: index("sms_messages_direction_idx").on(table.direction),
+  statusIdx: index("sms_messages_status_idx").on(table.status),
+  sentAtIdx: index("sms_messages_sent_at_idx").on(table.sentAt),
+  providerIdIdx: index("sms_messages_provider_id_idx").on(table.providerMessageId),
+  fromPhoneIdx: index("sms_messages_from_phone_idx").on(table.fromPhone),
+  toPhoneIdx: index("sms_messages_to_phone_idx").on(table.toPhone),
+}));
+
+// Communication preferences for members
+export const communicationPreferences = sqliteTable("communication_preferences", {
+  id: text("id").primaryKey(),
+  memberId: text("memberId").notNull().references(() => members.id, { onDelete: "cascade" }),
+  
+  // Email preferences
+  emailOptIn: integer("emailOptIn", { mode: "boolean" }).notNull().default(true),
+  emailCategories: text("emailCategories"), // JSON array of categories they want to receive
+  emailFrequency: text("emailFrequency").default("all"), // all, weekly_digest, monthly_digest, important_only
+  
+  // SMS preferences
+  smsOptIn: integer("smsOptIn", { mode: "boolean" }).notNull().default(false), // Default opt-out for compliance
+  smsCategories: text("smsCategories"), // JSON array of SMS categories
+  smsQuietHours: integer("smsQuietHours", { mode: "boolean" }).notNull().default(true),
+  
+  // Unsubscribe tracking
+  emailUnsubscribedAt: integer("emailUnsubscribedAt", { mode: "timestamp" }),
+  smsUnsubscribedAt: integer("smsUnsubscribedAt", { mode: "timestamp" }),
+  unsubscribeReason: text("unsubscribeReason"),
+  
+  // Bounce tracking
+  emailBounceCount: integer("emailBounceCount").notNull().default(0),
+  emailLastBounce: integer("emailLastBounce", { mode: "timestamp" }),
+  smsBounceCount: integer("smsBounceCount").notNull().default(0),
+  smsLastBounce: integer("smsLastBounce", { mode: "timestamp" }),
+  
+  // Preferred contact method
+  preferredMethod: text("preferredMethod").default("email"), // email, sms, both, none
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  memberIdIdx: index("communication_preferences_member_id_idx").on(table.memberId),
+  emailOptInIdx: index("communication_preferences_email_opt_in_idx").on(table.emailOptIn),
+  smsOptInIdx: index("communication_preferences_sms_opt_in_idx").on(table.smsOptIn),
+  preferredMethodIdx: index("communication_preferences_preferred_method_idx").on(table.preferredMethod),
+}));
+
+// Webhook events from email/SMS providers
+export const communicationWebhooks = sqliteTable("communication_webhooks", {
+  id: text("id").primaryKey(),
+  churchId: text("churchId").notNull().references(() => churches.id, { onDelete: "cascade" }),
+  
+  // Webhook details
+  provider: text("provider").notNull(), // "sendgrid", "twilio", "postmark"
+  eventType: text("eventType").notNull(), // "delivered", "bounce", "open", "click", "unsubscribe", "spam"
+  
+  // Related records
+  messageId: text("messageId").references(() => messages.id, { onDelete: "set null" }),
+  recipientId: text("recipientId").references(() => messageRecipients.id, { onDelete: "set null" }),
+  conversationId: text("conversationId").references(() => smsConversations.id, { onDelete: "set null" }),
+  
+  // Webhook payload
+  providerEventId: text("providerEventId"), // Provider's event ID
+  rawPayload: text("rawPayload").notNull(), // Full webhook payload as JSON
+  
+  // Processing status
+  processed: integer("processed", { mode: "boolean" }).notNull().default(false),
+  processedAt: integer("processedAt", { mode: "timestamp" }),
+  processingError: text("processingError"),
+  
+  // Timestamps
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+}, (table) => ({
+  churchIdIdx: index("communication_webhooks_church_id_idx").on(table.churchId),
+  providerIdx: index("communication_webhooks_provider_idx").on(table.provider),
+  eventTypeIdx: index("communication_webhooks_event_type_idx").on(table.eventType),
+  messageIdIdx: index("communication_webhooks_message_id_idx").on(table.messageId),
+  recipientIdIdx: index("communication_webhooks_recipient_id_idx").on(table.recipientId),
+  processedIdx: index("communication_webhooks_processed_idx").on(table.processed),
+  providerEventIdx: index("communication_webhooks_provider_event_idx").on(table.providerEventId),
+}));
