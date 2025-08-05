@@ -12,21 +12,14 @@ import {
   Mail, 
   Users, 
   Send, 
-  Calendar,
-  DollarSign,
-  AlertTriangle,
   CheckCircle2,
   Search,
   Plus,
   X,
-  Bold,
-  Italic,
-  Link as LinkIcon,
-  Save,
   ArrowLeft,
+  ArrowRight,
   Home
 } from "lucide-react";
-import { RecipientPicker } from "./recipient-picker";
 import Link from "next/link";
 
 interface Recipient {
@@ -37,28 +30,81 @@ interface Recipient {
   type: "individual" | "group";
 }
 
+interface GroupData {
+  id: string;
+  name: string;
+  count: number;
+  description?: string;
+}
+
+interface MemberData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  membershipStatus: string;
+}
+
+type WizardStep = 1 | 2 | 3;
+
 export function Compose() {
-  const [channels, setChannels] = useState<{email: boolean, sms: boolean}>({email: true, sms: false});
+  // Wizard state
+  const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+  
+  // Form state
+  const [selectedChannel, setSelectedChannel] = useState<"email" | "sms" | null>(null);
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
   const [recipients, setRecipients] = useState<Recipient[]>([]);
-  const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [showRecipientPicker, setShowRecipientPicker] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [recipientTab, setRecipientTab] = useState<"contacts" | "groups">("contacts");
+  const [contactSearch, setContactSearch] = useState("");
 
-  const characterLimit = 160; // SMS limit
+  // Calculations
   const smsMessages = Math.ceil(content.length / 160);
   const recipientCount = recipients.reduce((acc, r) => {
     return acc + (r.type === "group" ? getGroupSize(r.id) : 1);
   }, 0);
-  const estimatedCost = channels.sms ? (recipientCount * smsMessages * 0.01) : 0;
+  const estimatedCost = selectedChannel === "sms" ? (recipientCount * smsMessages * 0.01) : 0;
+
+  // Sample church groups data
+  const churchGroups: GroupData[] = [
+    { id: "eastside_bible_study", name: "Eastside Bible Study", count: 1, description: "Weekly Bible study group" },
+    { id: "event_volunteers", name: "Event Volunteers", count: 0, description: "Volunteers for church events" },
+    { id: "first_time_guests", name: "First Time Guests", count: 1, description: "New visitors to our church" },
+    { id: "first_timers", name: "First Timers", count: 0, description: "First-time attendees" },
+    { id: "interested_in_baptism", name: "Interested in Baptism", count: 3, description: "Members considering baptism" },
+    { id: "youth_group", name: "Youth Ministry", count: 45, description: "Young people ages 13-18" },
+    { id: "senior_adults", name: "Senior Saints", count: 67, description: "Beloved members 65 and older" },
+    { id: "prayer_team", name: "Prayer Team", count: 12, description: "Dedicated prayer warriors" },
+    { id: "worship_team", name: "Worship Team", count: 18, description: "Music and worship leaders" },
+    { id: "small_groups", name: "Small Groups", count: 89, description: "Community fellowship groups" }
+  ];
+
+  // Sample church members data
+  const churchMembers: MemberData[] = [
+    { id: "member_1", firstName: "Fred", lastName: "Flintstone", email: "fred.flintstone@bbcc.org", phone: "+1 (555) 123-FRED", membershipStatus: "Deacon" },
+    { id: "member_2", firstName: "Wilma", lastName: "Flintstone", email: "wilma.flintstone@bbcc.org", phone: "+1 (555) 123-FRED", membershipStatus: "Active" },
+    { id: "member_3", firstName: "John", lastName: "Smith", email: "john.smith@bbcc.org", phone: "+1 (555) 234-5678", membershipStatus: "Elder" },
+    { id: "member_4", firstName: "Betty", lastName: "Johnson", email: "betty.johnson@bbcc.org", phone: "+1 (555) 345-6789", membershipStatus: "Active" },
+    { id: "member_5", firstName: "Tom", lastName: "Wilson", email: "tom.wilson@bbcc.org", phone: "+1 (555) 456-7890", membershipStatus: "Active" },
+    { id: "member_6", firstName: "Sarah", lastName: "Davis", email: "sarah.davis@bbcc.org", phone: "+1 (555) 567-8901", membershipStatus: "Active" },
+    { id: "member_7", firstName: "Michael", lastName: "Brown", email: "michael.brown@bbcc.org", phone: "+1 (555) 678-9012", membershipStatus: "Visitor" },
+    { id: "member_8", firstName: "Lisa", lastName: "Anderson", email: "lisa.anderson@bbcc.org", phone: "+1 (555) 789-0123", membershipStatus: "Active" }
+  ];
+
+  // Filter members based on search and channel requirements
+  const filteredMembers = churchMembers.filter(member => {
+    const fullName = `${member.firstName} ${member.lastName}`.toLowerCase();
+    const hasEmailContact = selectedChannel === "email" ? member.email : true;
+    const hasSmsContact = selectedChannel === "sms" ? member.phone : true;
+    return fullName.includes(contactSearch.toLowerCase()) && hasEmailContact && hasSmsContact;
+  });
 
   const handleSendMessage = async () => {
-    if (!content.trim() || recipients.length === 0) return;
-    if (channels.email && !subject.trim()) return;
-    if (!channels.email && !channels.sms) return;
+    if (!content.trim() || recipients.length === 0 || !selectedChannel) return;
+    if (selectedChannel === "email" && !subject.trim()) return;
     
     setIsSending(true);
     
@@ -70,13 +116,12 @@ export function Compose() {
       setSubject("");
       setContent("");
       setRecipients([]);
-      setIsScheduled(false);
-      setScheduledDate("");
+      setSelectedChannel(null);
+      setCurrentStep(1);
       
-      // Show success message (you might want to add a toast notification here)
-      const channelText = channels.email && channels.sms ? "email and text messages" : 
-                          channels.email ? "email" : "text messages";
-      alert(`${channelText.charAt(0).toUpperCase() + channelText.slice(1)} sent successfully to ${recipientCount} church members!`);
+      // Show success message
+      const channelText = selectedChannel === "email" ? "Email" : "Text message";
+      alert(`${channelText} sent successfully to ${recipientCount} church members!`);
     } catch (error) {
       alert("Failed to send message. Please try again.");
     } finally {
@@ -84,549 +129,586 @@ export function Compose() {
     }
   };
 
-  const handleSaveTemplate = async () => {
-    if (!content.trim()) return;
-    
-    setIsSaving(true);
-    
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      alert("Message template saved successfully!");
-    } catch (error) {
-      alert("Failed to save template. Please try again.");
-    } finally {
-      setIsSaving(false);
+  const canProceedToStep2 = selectedChannel !== null;
+  const canProceedToStep3 = recipients.length > 0;
+  const canSend = content.trim() && recipients.length > 0 && selectedChannel &&
+    (selectedChannel === "sms" || subject.trim());
+
+  const handleNext = () => {
+    if (currentStep === 1 && canProceedToStep2) {
+      setCurrentStep(2);
+    } else if (currentStep === 2 && canProceedToStep3) {
+      setCurrentStep(3);
     }
   };
 
-  const handleCancel = () => {
-    if (content.trim() || subject.trim() || recipients.length > 0) {
-      if (confirm("Are you sure you want to cancel? Your message will be lost.")) {
-        // Reset form
-        setSubject("");
-        setContent("");
-        setRecipients([]);
-        setChannels({email: true, sms: false});
-        setIsScheduled(false);
-        setScheduledDate("");
-      }
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep((prev) => (prev - 1) as WizardStep);
     }
   };
-
-  const canSend = content.trim() && recipients.length > 0 && 
-    (channels.email || channels.sms) &&
-    (!channels.email || subject.trim()) &&
-    (!isScheduled || scheduledDate);
-
-  const hasAnyChannel = channels.email || channels.sms;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header with Navigation */}
-      <div className="space-y-4">
-        {/* Breadcrumb Navigation */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/dashboard/messaging" className="hover:text-primary transition-colors">
-            <Home className="h-4 w-4" />
-          </Link>
-          <span>/</span>
-          <Link href="/dashboard/messaging" className="hover:text-primary transition-colors">
-            Messages
-          </Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">Compose</span>
-        </div>
-        
-        {/* Back Button */}
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard/messaging">
-            <Button
-              variant="outline"
-              className="h-11 px-4 text-sm font-medium border-2 hover:bg-gray-50"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Messages
-            </Button>
-          </Link>
-        </div>
-        
-        {/* Page Header */}
-        <div className="border-b border-gray-200 pb-4">
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Mail className="h-6 w-6 text-blue-600" />
-              <MessageSquare className="h-6 w-6 text-green-600" />
+    <div className="min-h-screen bg-gray-50" style={{backgroundColor: '#F5F7FA'}}>
+      <div className="max-w-5xl mx-auto py-8 px-4">
+        {/* Header */}
+        <div className="mb-8 bg-white rounded-lg p-6" style={{boxShadow: '0 1px 3px rgba(0,0,0,0.12)', border: '1px solid #E1E8ED'}}>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <Link href="/dashboard/messaging" className="hover:text-blue-600 transition-colors flex items-center gap-1">
+              <Home className="h-4 w-4" />
+            </Link>
+            <span className="text-gray-300">/</span>
+            <Link href="/dashboard/messaging" className="hover:text-blue-600 transition-colors font-medium">
+              Messages
+            </Link>
+            <span className="text-gray-300">/</span>
+            <span className="text-gray-900 font-semibold">Compose</span>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900 mb-2">Send Message</h1>
+              <p className="text-gray-600 text-sm">Reach your church family with a personalized message</p>
             </div>
-            Send Message to Church Members
-          </h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Reach your church family via email, text message, or both channels
-          </p>
+            <Link href="/dashboard/messaging">
+              <Button variant="outline" className="flex items-center gap-2 font-medium border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Messages
+              </Button>
+            </Link>
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Main Compose Area */}
-        <div className="xl:col-span-3 space-y-6">
-          {/* Channel Selection */}
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold">1. Choose How to Send</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Select email, text message, or both channels</p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button
-                    variant={channels.email ? "default" : "outline"}
-                    onClick={() => setChannels(prev => ({...prev, email: !prev.email}))}
-                    className="h-16 text-sm font-medium border hover:shadow-sm transition-all flex flex-col gap-2 min-h-[44px]"
-                  >
-                    <Mail className="h-5 w-5" />
-                    <span>Email Message</span>
-                    {channels.email && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                  </Button>
-                  <Button
-                    variant={channels.sms ? "default" : "outline"}
-                    onClick={() => setChannels(prev => ({...prev, sms: !prev.sms}))}
-                    className="h-16 text-sm font-medium border hover:shadow-sm transition-all flex flex-col gap-2 min-h-[44px]"
-                  >
-                    <MessageSquare className="h-5 w-5" />
-                    <span>Text Message</span>
-                    {channels.sms && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                  </Button>
+        {/* Progress Indicator */}
+        <div className="mb-8 bg-white rounded-lg p-6" style={{boxShadow: '0 1px 3px rgba(0,0,0,0.12)', border: '1px solid #E1E8ED'}}>
+          <div className="flex items-center justify-center space-x-8">
+            {[1, 2, 3].map((step) => (
+              <div key={step} className="flex items-center">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
+                  step === currentStep 
+                    ? "bg-blue-600 text-white" 
+                    : step < currentStep 
+                    ? "bg-green-600 text-white" 
+                    : "bg-gray-300 text-gray-600"
+                }`}>
+                  {step < currentStep ? <CheckCircle2 className="h-5 w-5" /> : step}
                 </div>
-                
-                {!hasAnyChannel && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span className="font-medium text-sm">Please select at least one way to send your message</span>
-                    </div>
+                <div className="ml-3">
+                  <div className={`text-sm font-semibold ${
+                    step === currentStep ? "text-blue-600" : step < currentStep ? "text-green-600" : "text-gray-500"
+                  }`}>
+                    Step {step}
                   </div>
-                )}
-                
-                {channels.sms && (
-                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-orange-700">
-                      <DollarSign className="h-4 w-4" />
-                      <span className="font-semibold text-sm">Text Message Costs</span>
-                    </div>
-                    <p className="text-orange-700 mt-2 text-sm">
-                      Each text message costs 1 cent per member. Long messages split into multiple texts.
-                    </p>
-                    {recipientCount > 0 && (
-                      <div className="mt-3 p-3 bg-white rounded border border-orange-300">
-                        <p className="text-orange-800 font-semibold text-sm">
-                          Estimated cost: ${estimatedCost.toFixed(2)} for {recipientCount} members
-                        </p>
-                        {smsMessages > 1 && (
-                          <p className="text-orange-700 text-xs mt-1">
-                            ({smsMessages} messages per member = ${(smsMessages * 0.01).toFixed(2)} each)
-                          </p>
-                        )}
-                      </div>
-                    )}
+                  <div className="text-xs text-gray-500 font-medium">
+                    {step === 1 ? "Choose Channel" : step === 2 ? "Select Recipients" : "Write Message"}
                   </div>
+                </div>
+                {step < 3 && (
+                  <div className={`w-16 h-0.5 ml-6 ${
+                    step < currentStep ? "bg-green-600" : "bg-gray-300"
+                  }`} />
                 )}
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+        </div>
 
-          {/* Recipients */}
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                2. Choose Who Gets the Message
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Select church members or groups to receive your message</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Quick Group Buttons */}
-              <div className="space-y-3">
-                <p className="text-sm font-semibold">Send to Groups:</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Step Content */}
+        <Card className="bg-white border border-gray-200" style={{boxShadow: '0 1px 3px rgba(0,0,0,0.12)'}}>
+          {/* Step 1: Choose Channel */}
+          {currentStep === 1 && (
+            <>
+              <CardHeader className="border-b" style={{borderColor: '#E1E8ED'}}>
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-gray-600" />
+                  Choose How to Send Your Message
+                </CardTitle>
+                <p className="text-gray-600 mt-2 text-sm">Select either email or text message to reach your church family</p>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+                  <div
+                    onClick={() => setSelectedChannel("email")}
+                    className={`p-6 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                      selectedChannel === "email"
+                        ? "border-blue-500 bg-blue-50 shadow-md"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                        selectedChannel === "email" ? "bg-blue-100" : "bg-gray-100"
+                      }`}>
+                        <Mail className={`h-8 w-8 ${
+                          selectedChannel === "email" ? "text-blue-600" : "text-gray-600"
+                        }`} />
+                      </div>
+                      <h3 className="text-base font-semibold text-gray-900 mb-2">Email Message</h3>
+                      <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+                        Send formatted emails with subjects, links, and personalization
+                      </p>
+                      <div className="text-xs text-gray-500 font-medium">
+                        Perfect for announcements, newsletters, and detailed information
+                      </div>
+                      {selectedChannel === "email" && (
+                        <div className="mt-4 flex items-center justify-center text-blue-600">
+                          <CheckCircle2 className="h-5 w-5 mr-2" />
+                          <span className="font-medium">Selected</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedChannel("sms")}
+                    className={`p-6 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                      selectedChannel === "sms"
+                        ? "border-green-500 bg-green-50 shadow-md"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="text-center">
+                      <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                        selectedChannel === "sms" ? "bg-green-100" : "bg-gray-100"
+                      }`}>
+                        <MessageSquare className={`h-8 w-8 ${
+                          selectedChannel === "sms" ? "text-green-600" : "text-gray-600"
+                        }`} />
+                      </div>
+                      <h3 className="text-base font-semibold text-gray-900 mb-2">Text Message</h3>
+                      <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+                        Send quick, direct text messages that reach members instantly
+                      </p>
+                      <div className="text-xs text-gray-500 font-medium">
+                        Great for urgent updates, reminders, and short announcements
+                      </div>
+                      {selectedChannel === "sms" && (
+                        <div className="mt-4 flex items-center justify-center text-green-600">
+                          <CheckCircle2 className="h-5 w-5 mr-2" />
+                          <span className="font-medium">Selected</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-center mt-8">
                   <Button
-                    variant="outline"
-                    onClick={() => {
-                      const allMembers = {id: "all_members", name: "All Members", type: "group" as const};
-                      if (!recipients.find(r => r.id === allMembers.id)) {
+                    onClick={handleNext}
+                    disabled={!canProceedToStep2}
+                    className="px-8 py-3 text-base font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 transition-all"
+                  >
+                    Continue to Recipients
+                    <ArrowRight className="h-5 w-5 ml-2" />
+                  </Button>
+                </div>
+              </CardContent>
+            </>
+          )}
+
+          {/* Step 2: Select Recipients */}
+          {currentStep === 2 && (
+            <>
+              <CardHeader className="border-b" style={{borderColor: '#E1E8ED'}}>
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-gray-600" />
+                  Select Recipients
+                </CardTitle>
+                <p className="text-gray-600 mt-2 text-sm">Choose who will receive your message</p>
+              </CardHeader>
+              <CardContent className="p-8">
+                {/* Quick Select Buttons */}
+                <div className="mb-8 p-4 bg-gray-50 rounded-lg" style={{border: '1px solid #E1E8ED'}}>
+                  <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-gray-600" />
+                    Quick Select
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const allMembers = {id: "all_members", name: "All Members", type: "group" as const};
                         setRecipients([allMembers]);
-                      }
-                    }}
-                    className="h-12 text-sm font-medium border hover:bg-blue-50 hover:border-blue-300 transition-all min-h-[44px]"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    All Members (247)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const activeMembers = {id: "active_members", name: "Active Members", type: "group" as const};
-                      if (!recipients.find(r => r.id === activeMembers.id)) {
+                      }}
+                      className="h-16 flex flex-col gap-1 hover:bg-blue-50 hover:border-blue-300 border-gray-300 bg-white transition-all"
+                    >
+                      <Users className="h-4 w-4 text-blue-600" />
+                      <span className="font-semibold text-gray-900">All Members</span>
+                      <span className="text-xs text-gray-500 font-medium">247 people</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const activeMembers = {id: "active_members", name: "Active Members", type: "group" as const};
                         setRecipients([activeMembers]);
-                      }
-                    }}
-                    className="h-12 text-sm font-medium border hover:bg-green-50 hover:border-green-300 transition-all min-h-[44px]"
-                  >
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Active Members (241)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const visitors = {id: "first_time_guests", name: "First Time Guests", type: "group" as const};
-                      if (!recipients.find(r => r.id === visitors.id)) {
+                      }}
+                      className="h-16 flex flex-col gap-1 hover:bg-green-50 hover:border-green-300 border-gray-300 bg-white transition-all"
+                    >
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="font-semibold text-gray-900">Active Members</span>
+                      <span className="text-xs text-gray-500 font-medium">241 people</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const visitors = {id: "first_time_guests", name: "First Time Guests", type: "group" as const};
                         setRecipients([visitors]);
-                      }
-                    }}
-                    className="h-12 text-sm font-medium border hover:bg-purple-50 hover:border-purple-300 transition-all min-h-[44px]"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    First Time Guests (6)
-                  </Button>
-                </div>
-              </div>
-
-              {/* Individual Selection */}
-              <div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowRecipientPicker(true)}
-                  className="w-full h-12 text-sm font-medium border border-dashed hover:bg-blue-50 hover:border-blue-300 transition-all min-h-[44px]"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Choose Specific Members
-                </Button>
-              </div>
-
-              {recipients.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="default" className="text-sm px-3 py-1">
-                      {recipientCount} Church Members Selected
-                    </Badge>
-                    {channels.sms && estimatedCost > 0 && (
-                      <Badge variant="destructive" className="text-sm px-3 py-1">
-                        Will Cost: ${estimatedCost.toFixed(2)}
-                      </Badge>
-                    )}
+                      }}
+                      className="h-16 flex flex-col gap-1 hover:bg-purple-50 hover:border-purple-300 border-gray-300 bg-white transition-all"
+                    >
+                      <Plus className="h-4 w-4 text-purple-600" />
+                      <span className="font-semibold text-gray-900">Visitors</span>
+                      <span className="text-xs text-gray-500 font-medium">6 people</span>
+                    </Button>
                   </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {recipients.map((recipient) => (
-                      <div
-                        key={recipient.id}
-                        className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded border border-blue-200 text-sm"
-                      >
-                        <span className="font-medium">{recipient.name}</span>
-                        {recipient.type === "group" && (
-                          <Badge variant="outline" className="text-xs">
-                            {getGroupSize(recipient.id)} members
-                          </Badge>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setRecipients(recipients.filter(r => r.id !== recipient.id))}
-                          className="h-6 w-6 p-0 hover:bg-blue-200 rounded"
+                </div>
+
+                {/* Tabs for Contacts/Groups */}
+                <div className="border-b mb-6" style={{borderColor: '#E1E8ED'}}>
+                  <div className="flex space-x-8">
+                    <button
+                      onClick={() => setRecipientTab("contacts")}
+                      className={`py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                        recipientTab === "contacts"
+                          ? "border-blue-500 text-blue-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      <Users className="h-4 w-4" />
+                      Individual Contacts
+                    </button>
+                    <button
+                      onClick={() => setRecipientTab("groups")}
+                      className={`py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                        recipientTab === "groups"
+                          ? "border-blue-500 text-blue-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      <Users className="h-4 w-4" />
+                      Groups
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tab Content */}
+                {recipientTab === "contacts" ? (
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search for church members..."
+                        value={contactSearch}
+                        onChange={(e) => setContactSearch(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {filteredMembers.length === 0 ? (
+                        <p className="text-center text-gray-500 py-8">
+                          {contactSearch ? "No members found." : "Start typing to search for members."}
+                        </p>
+                      ) : (
+                        filteredMembers.map((member) => {
+                          const isSelected = recipients.find(r => r.id === member.id);
+                          return (
+                            <div
+                              key={member.id}
+                              onClick={() => {
+                                const recipient: Recipient = {
+                                  id: member.id,
+                                  name: `${member.firstName} ${member.lastName}`,
+                                  email: member.email,
+                                  phone: member.phone,
+                                  type: "individual"
+                                };
+                                if (!isSelected) {
+                                  setRecipients([...recipients, recipient]);
+                                }
+                              }}
+                              className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                                isSelected 
+                                  ? "bg-blue-50 border-blue-300 shadow-sm" 
+                                  : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-semibold text-gray-900">{member.firstName} {member.lastName}</p>
+                                  <p className="text-sm text-gray-500 font-medium">
+                                    {selectedChannel === "email" ? member.email : member.phone}
+                                  </p>
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {churchGroups.map((group) => {
+                      const isSelected = recipients.find(r => r.id === group.id);
+                      return (
+                        <div
+                          key={group.id}
+                          onClick={() => {
+                            const recipient: Recipient = {
+                              id: group.id,
+                              name: group.name,
+                              type: "group"
+                            };
+                            if (!isSelected) {
+                              setRecipients([...recipients, recipient]);
+                            }
+                          }}
+                          className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                            isSelected 
+                              ? "bg-blue-50 border-blue-300 shadow-sm" 
+                              : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:shadow-sm"
+                          }`}
                         >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-semibold text-gray-900">{group.name}</p>
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="text-sm text-gray-500 font-medium">{group.description}</span>
+                                <Badge variant="outline" className="text-xs font-medium bg-gray-50">
+                                  {group.count} members
+                                </Badge>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
 
-          {/* Message Content */}
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold">3. Write Your Message</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Compose the message you want to send to your church family</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {channels.email && (
-                <div>
-                  <Label htmlFor="subject" className="text-sm font-semibold block mb-2">
-                    Email Subject (What's this about?)
-                  </Label>
-                  <Input
-                    id="subject"
-                    placeholder="Example: Sunday Service Update, Prayer Request, Church Event, etc."
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="h-11 text-sm border focus:border-primary transition-colors"
-                  />
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label htmlFor="content" className="text-sm font-semibold">
-                    Your Message
-                  </Label>
-                  {channels.email && (
-                    <div className="flex gap-1">
+                {/* Selected Recipients */}
+                {recipients.length > 0 && (
+                  <div className="mt-6 p-4 bg-white rounded-lg" style={{border: '1px solid #E1E8ED', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'}}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        Selected: {recipientCount} members
+                      </h4>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-8 px-2"
-                        onClick={() => {
-                          const textarea = document.getElementById('content') as HTMLTextAreaElement;
-                          const start = textarea.selectionStart;
-                          const end = textarea.selectionEnd;
-                          const selectedText = content.substring(start, end);
-                          const newContent = content.substring(0, start) + '**' + selectedText + '**' + content.substring(end);
-                          setContent(newContent);
-                        }}
+                        onClick={() => setRecipients([])}
+                        className="text-gray-500 hover:text-gray-700 hover:bg-gray-100 font-medium"
                       >
-                        <Bold className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2"
-                        onClick={() => {
-                          const textarea = document.getElementById('content') as HTMLTextAreaElement;
-                          const start = textarea.selectionStart;
-                          const end = textarea.selectionEnd;
-                          const selectedText = content.substring(start, end);
-                          const newContent = content.substring(0, start) + '*' + selectedText + '*' + content.substring(end);
-                          setContent(newContent);
-                        }}
-                      >
-                        <Italic className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2"
-                        onClick={() => {
-                          const url = prompt('Enter website link:');
-                          if (url) {
-                            const linkText = prompt('Enter link text (leave empty to use URL):') || url;
-                            setContent(prev => prev + ` [${linkText}](${url})`);
-                          }
-                        }}
-                      >
-                        <LinkIcon className="h-3 w-3" />
+                        Clear all
                       </Button>
                     </div>
-                  )}
+                    <div className="flex flex-wrap gap-2">
+                      {recipients.map((recipient) => (
+                        <div
+                          key={recipient.id}
+                          className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
+                        >
+                          <span>{recipient.name}</span>
+                          {recipient.type === "group" && (
+                            <span className="text-xs">({getGroupSize(recipient.id)})</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRecipients(recipients.filter(r => r.id !== recipient.id))}
+                            className="h-4 w-4 p-0 hover:bg-blue-200 rounded-full ml-1"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between mt-8 pt-6" style={{borderTop: '1px solid #E1E8ED'}}>
+                  <Button variant="outline" onClick={handleBack} className="font-medium border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleNext}
+                    disabled={!canProceedToStep3}
+                    className="px-8 font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 transition-all"
+                  >
+                    Continue to Message
+                    <ArrowRight className="h-5 w-5 ml-2" />
+                  </Button>
                 </div>
-                <Textarea
-                  id="content"
-                  placeholder={
-                    channels.email && channels.sms 
-                      ? "Write your message here. Keep it clear and loving. This will be sent via both email and text message."
-                      : channels.email 
-                      ? "Write your message here. Keep it clear and friendly. You can use formatting and personalize with {{firstName}} for member names."
-                      : "Write a short, clear message. Remember: longer messages cost more to send and may be split into multiple texts."
-                  }
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="min-h-[200px] text-sm border resize-none focus:border-primary transition-colors leading-relaxed"
-                />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <div className="space-y-1">
-                    {channels.sms && (
-                      <div className="text-sm">
-                        <span className={content.length > 160 ? "text-orange-600 font-medium" : "text-muted-foreground"}>
-                          {content.length}/160 characters
-                        </span>
-                        {content.length > 160 && (
-                          <div className="text-orange-600 font-medium text-sm mt-1">
-                            Will send {smsMessages} text messages per member
+              </CardContent>
+            </>
+          )}
+
+          {/* Step 3: Write Message with Live Preview */}
+          {currentStep === 3 && (
+            <>
+              <CardHeader className="border-b" style={{borderColor: '#E1E8ED'}}>
+                <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-gray-600" />
+                  Write Your Message
+                </CardTitle>
+                <p className="text-gray-600 mt-2 text-sm">Compose your message with live preview</p>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                  {/* Message Composer - 60% */}
+                  <div className="lg:col-span-3 space-y-6">
+                    {selectedChannel === "email" && (
+                      <div>
+                        <Label htmlFor="subject" className="text-sm font-semibold block mb-2 text-gray-900">
+                          Email Subject
+                        </Label>
+                        <Input
+                          id="subject"
+                          placeholder="What's this message about?"
+                          value={subject}
+                          onChange={(e) => setSubject(e.target.value)}
+                          className="text-base"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <Label htmlFor="content" className="text-sm font-semibold block mb-2 text-gray-900">
+                        Your Message
+                      </Label>
+                      <Textarea
+                        id="content"
+                        placeholder={
+                          selectedChannel === "email" 
+                            ? "Write your message here. You can use {firstName} for personalization."
+                            : "Write a clear, concise message. Longer messages may be split into multiple texts."
+                        }
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        className="min-h-[300px] text-base leading-relaxed resize-none"
+                      />
+                      
+                      {selectedChannel === "sms" && (
+                        <div className="mt-2 text-sm">
+                          <span className={content.length > 160 ? "text-orange-600 font-medium" : "text-gray-500"}>
+                            {content.length}/160 characters
+                          </span>
+                          {content.length > 160 && (
+                            <div className="text-orange-600 font-medium">
+                              Will send {smsMessages} messages per person (${(smsMessages * 0.01).toFixed(2)} each)
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Live Preview - 40% */}
+                  <div className="lg:col-span-2">
+                    <div className="sticky top-8">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-gray-600" />
+                        Live Preview
+                      </h3>
+                      <div className="border rounded-lg p-4 bg-white" style={{border: '1px solid #E1E8ED', boxShadow: '0 1px 3px rgba(0,0,0,0.12)'}}>
+                        {selectedChannel === "email" ? (
+                          <div className="space-y-3">
+                            <div className="border-b border-gray-100 pb-3">
+                              <div className="text-xs text-gray-500 mb-1">Subject:</div>
+                              <div className="font-semibold">
+                                {subject || "Your message subject will appear here"}
+                              </div>
+                            </div>
+                            <div className="text-sm">
+                              <div className="text-xs text-gray-500 mb-2">Message:</div>
+                              <div className="whitespace-pre-wrap">
+                                {content.replace(/\{firstName\}/g, "John") || "Your message content will appear here as you type..."}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="text-xs text-gray-500">Text Message Preview:</div>
+                            <div className="bg-blue-500 text-white p-3 rounded-lg rounded-bl-none text-sm max-w-[80%]">
+                              {content || "Your text message will appear here..."}
+                            </div>
+                            {content.length > 160 && (
+                              <div className="text-xs text-orange-600">
+                                Note: This will be sent as {smsMessages} separate messages
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                  
-                  {channels.email && (
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">
-                        <div className="font-medium">Personal touches available:</div>
-                        <div className="text-xs">{{firstName}}, {{lastName}}, {{preferredName}}</div>
+
+                      {/* Summary */}
+                      <div className="mt-6 p-4 bg-white rounded-lg" style={{border: '1px solid #E1E8ED', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'}}>
+                        <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                          Summary
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Channel:</span>
+                            <span className="font-semibold text-gray-900">
+                              {selectedChannel === "email" ? "Email" : "SMS"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Recipients:</span>
+                            <span className="font-semibold text-gray-900">{recipientCount} members</span>
+                          </div>
+                          {selectedChannel === "sms" && estimatedCost > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Estimated cost:</span>
+                              <span className="font-semibold text-orange-600">
+                                ${estimatedCost.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Bottom Action Buttons */}
-              <div className="pt-4 border-t">
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex justify-between mt-8 pt-6" style={{borderTop: '1px solid #E1E8ED'}}>
+                  <Button variant="outline" onClick={handleBack} className="font-medium border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
                   <Button
                     onClick={handleSendMessage}
                     disabled={!canSend || isSending}
-                    className="flex-1 h-11 text-sm font-semibold shadow-sm hover:shadow transition-all min-h-[44px]"
+                    className="px-8 font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 transition-all"
                   >
                     {isSending ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                        Sending Message...
+                        Sending...
                       </>
                     ) : (
                       <>
                         <Send className="h-4 w-4 mr-2" />
-                        Send Now
+                        Send Message
                       </>
                     )}
                   </Button>
-                  
-                  <Button
-                    onClick={handleSaveTemplate}
-                    disabled={!content.trim() || isSaving}
-                    variant="outline"
-                    className="flex-1 h-11 text-sm font-semibold border shadow-sm hover:shadow transition-all min-h-[44px]"
-                  >
-                    {isSaving ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save as Template
-                      </>
-                    )}
-                  </Button>
-                  
-                  <Button
-                    onClick={handleCancel}
-                    variant="ghost"
-                    className="h-11 text-sm font-semibold hover:bg-gray-100 transition-all min-h-[44px]"
-                  >
-                    Cancel
-                  </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sidebar - Summary & Options */}
-        <div className="space-y-6">
-          {/* Message Summary */}
-          <Card className="border shadow-sm bg-gray-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold">Message Summary</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Review before sending</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-semibold">Sending via:</span>
-                  <div className="flex gap-1">
-                    {channels.email && <Badge variant="default" className="text-xs px-2 py-1">Email</Badge>}
-                    {channels.sms && <Badge variant="secondary" className="text-xs px-2 py-1">SMS</Badge>}
-                    {!hasAnyChannel && <Badge variant="outline" className="text-xs px-2 py-1">None Selected</Badge>}
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-semibold">Recipients:</span>
-                  <span className="font-semibold text-sm text-blue-600">{recipientCount} members</span>
-                </div>
-                
-                {channels.sms && estimatedCost > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold">SMS cost:</span>
-                    <span className="font-semibold text-sm text-red-600">${estimatedCost.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-
-              {!canSend && (
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded">
-                  <div className="flex items-center gap-2 text-orange-700">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="font-semibold text-sm">Still Need To:</span>
-                  </div>
-                  <ul className="text-orange-700 mt-2 text-sm space-y-1">
-                    {!content.trim() && <li>• Write your message</li>}
-                    {recipients.length === 0 && <li>• Choose who to send to</li>}
-                    {channels.email && !subject.trim() && <li>• Add email subject</li>}
-                    {!hasAnyChannel && <li>• Select email or SMS</li>}
-                  </ul>
-                </div>
-              )}
-
-              {canSend && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded">
-                  <div className="flex items-center gap-2 text-green-700">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="font-semibold text-sm">Ready to Send!</span>
-                  </div>
-                  <p className="text-green-700 mt-2 text-sm">
-                    Your message is ready to reach {recipientCount} church members.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          
-          {/* Schedule Options */}
-          <Card className="border shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold">Schedule Options</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="schedule"
-                  checked={isScheduled}
-                  onChange={(e) => setIsScheduled(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <Label htmlFor="schedule" className="text-sm font-medium cursor-pointer">
-                  Schedule for later
-                </Label>
-              </div>
-
-              {isScheduled && (
-                <div>
-                  <Label htmlFor="scheduledDate" className="text-sm font-semibold block mb-2">
-                    When to send:
-                  </Label>
-                  <Input
-                    id="scheduledDate"
-                    type="datetime-local"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    className="h-10 text-sm border"
-                    min={new Date().toISOString().slice(0, 16)}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </>
+          )}
+        </Card>
       </div>
-
-      {/* Recipient Picker Modal */}
-      {showRecipientPicker && (
-        <RecipientPicker
-          onClose={() => setShowRecipientPicker(false)}
-          onSelect={(newRecipients) => {
-            // Remove duplicates and add new recipients
-            const existingIds = recipients.map(r => r.id);
-            const uniqueNewRecipients = newRecipients.filter(r => !existingIds.includes(r.id));
-            setRecipients([...recipients, ...uniqueNewRecipients]);
-            setShowRecipientPicker(false);
-          }}
-          channels={channels}
-        />
-      )}
     </div>
   );
 }
@@ -637,10 +719,15 @@ function getGroupSize(groupId: string): number {
     "all_members": 247,  // Entire Church Family
     "active_members": 241,  // Active Church Members  
     "first_time_guests": 6,  // First Time Guests
-    "eastside_bible_study": 28,  // Eastside Bible Study
-    "event_volunteers": 45,  // Event Volunteers
+    "eastside_bible_study": 1,  // Eastside Bible Study
+    "event_volunteers": 0,  // Event Volunteers
+    "first_timers": 0,  // First Timers
+    "interested_in_baptism": 3,  // Interested in Baptism
     "youth_group": 45,  // Youth Ministry
-    "senior_adults": 67  // Senior Saints
+    "senior_adults": 67,  // Senior Saints
+    "prayer_team": 12,  // Prayer Team
+    "worship_team": 18,  // Worship Team
+    "small_groups": 89  // Small Groups
   };
   return groupSizes[groupId as keyof typeof groupSizes] || 1;
 }
