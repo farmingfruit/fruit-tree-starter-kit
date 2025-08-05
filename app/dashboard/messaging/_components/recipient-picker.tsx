@@ -32,7 +32,7 @@ interface Recipient {
 interface RecipientPickerProps {
   onClose: () => void;
   onSelect: (recipients: Recipient[]) => void;
-  messageType: "email" | "sms";
+  channels: {email: boolean, sms: boolean};
 }
 
 // Sample data for quick groups
@@ -79,64 +79,110 @@ const quickGroups = [
   }
 ];
 
-// Sample individual members data
+// Sample individual members data (from existing church data)
 const sampleMembers = [
   {
     id: "member_1",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.johnson@email.com",
-    phone: "+1 (555) 123-4567",
-    membershipStatus: "Active",
+    firstName: "Fred",
+    lastName: "Flintstone",
+    email: "fred.flintstone@bbcc.org",
+    phone: "+1 (555) 123-FRED",
+    membershipStatus: "Deacon",
     avatar: "/api/placeholder/32/32"
   },
   {
     id: "member_2",
-    firstName: "Mike",
-    lastName: "Wilson",
-    email: "mike.wilson@email.com", 
-    phone: "+1 (555) 234-5678",
+    firstName: "Wilma",
+    lastName: "Flintstone",
+    email: "wilma.flintstone@bbcc.org", 
+    phone: "+1 (555) 123-FRED",
     membershipStatus: "Active",
     avatar: "/api/placeholder/32/32"
   },
   {
     id: "member_3",
-    firstName: "Elizabeth", 
-    lastName: "Turner",
-    email: "liz.turner@email.com",
-    phone: "+1 (555) 345-6789",
+    firstName: "SpongeBob", 
+    lastName: "SquarePants",
+    email: "spongebob@bbcc.org",
+    phone: "+1 (555) 123-KRAB",
     membershipStatus: "Active",
     avatar: "/api/placeholder/32/32"
   },
   {
     id: "member_4",
-    firstName: "Robert",
-    lastName: "Davis",
-    email: "robert.davis@email.com",
+    firstName: "Jim",
+    lastName: "Halpert",
+    email: "jim.halpert@bbcc.org",
     phone: "+1 (555) 456-7890", 
-    membershipStatus: "Active",
+    membershipStatus: "Elder",
     avatar: "/api/placeholder/32/32"
   },
   {
     id: "member_5",
-    firstName: "Jennifer",
-    lastName: "Brown",
-    email: "jen.brown@email.com",
+    firstName: "Pam",
+    lastName: "Halpert",
+    email: "pam.halpert@bbcc.org",
+    phone: "+1 (555) 456-7890",
+    membershipStatus: "Active",
+    avatar: "/api/placeholder/32/32"
+  },
+  {
+    id: "member_6",
+    firstName: "Dwight",
+    lastName: "Schrute",
+    email: "pastor@bbcc.org",
+    phone: "+1 (555) 234-5678",
+    membershipStatus: "Pastor",
+    avatar: "/api/placeholder/32/32"
+  },
+  {
+    id: "member_7",
+    firstName: "Ben",
+    lastName: "Wyatt",
+    email: "ben.wyatt@bbcc.org",
+    phone: "+1 (555) 345-6789",
+    membershipStatus: "Elder",
+    avatar: "/api/placeholder/32/32"
+  },
+  {
+    id: "member_8",
+    firstName: "Leslie",
+    lastName: "Wyatt",
+    email: "leslie.wyatt@bbcc.org",
+    phone: "+1 (555) 345-6789",
+    membershipStatus: "Active",
+    avatar: "/api/placeholder/32/32"
+  },
+  {
+    id: "member_9",
+    firstName: "Squidward",
+    lastName: "Tentacles",
+    email: "squidward@email.com",
     phone: "+1 (555) 567-8901",
+    membershipStatus: "Visitor",
+    avatar: "/api/placeholder/32/32"
+  },
+  {
+    id: "member_10",
+    firstName: "Michael",
+    lastName: "Scott",
+    email: "michael.scott@email.com",
+    phone: "+1 (555) 678-9012",
     membershipStatus: "Visitor",
     avatar: "/api/placeholder/32/32"
   }
 ];
 
-export function RecipientPicker({ onClose, onSelect, messageType }: RecipientPickerProps) {
+export function RecipientPicker({ onClose, onSelect, channels }: RecipientPickerProps) {
   const [selectedTab, setSelectedTab] = useState<"groups" | "individuals">("groups");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecipients, setSelectedRecipients] = useState<Recipient[]>([]);
 
   const filteredMembers = sampleMembers.filter(member => {
     const fullName = `${member.firstName} ${member.lastName}`.toLowerCase();
-    const hasContact = messageType === "email" ? member.email : member.phone;
-    return fullName.includes(searchQuery.toLowerCase()) && hasContact;
+    const hasEmailContact = channels.email ? member.email : true;
+    const hasSmsContact = channels.sms ? member.phone : true;
+    return fullName.includes(searchQuery.toLowerCase()) && hasEmailContact && hasSmsContact;
   });
 
   const filteredGroups = quickGroups.filter(group =>
@@ -186,7 +232,10 @@ export function RecipientPicker({ onClose, onSelect, messageType }: RecipientPic
             Choose Who Gets Your Message
           </DialogTitle>
           <p className="text-base text-muted-foreground leading-relaxed mt-2">
-            Select church members or groups to receive your {messageType === "email" ? "email" : "text message"}
+            Select church members or groups to receive your message
+            {channels.email && channels.sms && " via email and text message"}
+            {channels.email && !channels.sms && " via email"}
+            {!channels.email && channels.sms && " via text message"}
           </p>
         </DialogHeader>
 
@@ -241,9 +290,26 @@ export function RecipientPicker({ onClose, onSelect, messageType }: RecipientPic
                           <div className="flex-1">
                             <h3 className="text-2xl font-bold">{group.name}</h3>
                             <p className="text-lg text-muted-foreground font-medium mt-1">{group.description}</p>
-                            <Badge variant="secondary" className="mt-2 text-base px-3 py-1">
-                              {group.count} church members
-                            </Badge>
+                            <div className="flex gap-2 mt-2">
+                              <Badge variant="secondary" className="text-base px-3 py-1">
+                                {group.count} church members
+                              </Badge>
+                              {group.id === "all_members" && (
+                                <Badge variant="outline" className="text-base px-3 py-1">
+                                  Everyone
+                                </Badge>
+                              )}
+                              {group.id === "active_members" && (
+                                <Badge variant="outline" className="text-base px-3 py-1">
+                                  Regular Attendees
+                                </Badge>
+                              )}
+                              {group.id === "visitors" && (
+                                <Badge variant="outline" className="text-base px-3 py-1">
+                                  New Friends
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           {selectedRecipients.find(r => r.id === group.id) ? (
                             <div className="flex items-center gap-2">
@@ -279,13 +345,13 @@ export function RecipientPicker({ onClose, onSelect, messageType }: RecipientPic
                               {member.firstName} {member.lastName}
                             </h3>
                             <div className="flex items-center gap-6 text-muted-foreground mt-2">
-                              {messageType === "email" && member.email && (
+                              {channels.email && member.email && (
                                 <div className="flex items-center gap-2">
                                   <Mail className="h-5 w-5" />
                                   <span className="text-lg font-medium">{member.email}</span>
                                 </div>
                               )}
-                              {messageType === "sms" && member.phone && (
+                              {channels.sms && member.phone && (
                                 <div className="flex items-center gap-2">
                                   <Phone className="h-5 w-5" />
                                   <span className="text-lg font-medium">{member.phone}</span>
@@ -293,10 +359,17 @@ export function RecipientPicker({ onClose, onSelect, messageType }: RecipientPic
                               )}
                             </div>
                             <Badge 
-                              variant={member.membershipStatus === "Active" ? "default" : "secondary"}
+                              variant={
+                                member.membershipStatus === "Pastor" || member.membershipStatus === "Elder" || member.membershipStatus === "Deacon" ? "default" :
+                                member.membershipStatus === "Active" ? "secondary" : "outline"
+                              }
                               className="mt-2 text-base px-3 py-1"
                             >
-                              {member.membershipStatus} Member
+                              {member.membershipStatus === "Pastor" ? "Pastor" :
+                               member.membershipStatus === "Elder" ? "Elder" :
+                               member.membershipStatus === "Deacon" ? "Deacon" :
+                               member.membershipStatus === "Active" ? "Active Member" :
+                               "Visitor"}
                             </Badge>
                           </div>
                           {selectedRecipients.find(r => r.id === member.id) ? (

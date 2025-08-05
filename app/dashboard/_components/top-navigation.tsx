@@ -128,18 +128,16 @@ export default function TopNavigation() {
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   )}
                 >
-                  <div className="relative">
-                    <item.icon className="h-4 w-4" />
-                    {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
-                      <Badge 
-                        variant="destructive" 
-                        className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
-                      >
-                        {unreadMessageCount}
-                      </Badge>
-                    )}
-                  </div>
-                  {item.label}
+                  <item.icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                  {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className="ml-1 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
+                    >
+                      {unreadMessageCount}
+                    </Badge>
+                  )}
                 </Link>
               ))}
             </nav>
@@ -169,18 +167,16 @@ export default function TopNavigation() {
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               )}
             >
-              <div className="relative">
-                <item.icon className="h-4 w-4" />
-                {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
-                  <Badge 
-                    variant="destructive" 
-                    className="absolute -top-2 -right-2 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
-                  >
-                    {unreadMessageCount}
-                  </Badge>
-                )}
-              </div>
-              {item.label}
+              <item.icon className="h-4 w-4" />
+              <span>{item.label}</span>
+              {item.basePath === "/dashboard/messaging" && unreadMessageCount > 0 && (
+                <Badge 
+                  variant="destructive" 
+                  className="ml-1 h-5 w-5 p-0 text-xs flex items-center justify-center min-w-[20px]"
+                >
+                  {unreadMessageCount}
+                </Badge>
+              )}
             </Link>
           ))}
         </nav>
