@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { WysiwygEditor, WysiwygEditorRef } from './wysiwyg-editor';
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -18,7 +19,11 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
-  Home
+  Home,
+  Smile,
+  Clock,
+  AlertTriangle,
+  ChevronDown
 } from "lucide-react";
 import Link from "next/link";
 
@@ -60,13 +65,117 @@ export function Compose() {
   const [isSending, setIsSending] = useState(false);
   const [recipientTab, setRecipientTab] = useState<"contacts" | "groups">("contacts");
   const [contactSearch, setContactSearch] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState("");
+  const [selectedEmojiCategory, setSelectedEmojiCategory] = useState("recent");
+  const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const wysiwygRef = useRef<WysiwygEditorRef>(null);
+  const [showMergeTags, setShowMergeTags] = useState(false);
+  const mergeTagsRef = useRef<HTMLDivElement>(null);
 
-  // Calculations
-  const smsMessages = Math.ceil(content.length / 160);
+  // Close emoji picker and merge tags when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+      if (mergeTagsRef.current && !mergeTagsRef.current.contains(event.target as Node)) {
+        setShowMergeTags(false);
+      }
+    }
+
+    if (showEmojiPicker || showMergeTags) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showEmojiPicker, showMergeTags]);
+
+  // Load recent emojis from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('church-recent-emojis');
+    if (saved) {
+      setRecentEmojis(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save recent emojis to localStorage
+  const addToRecentEmojis = (emoji: string) => {
+    const updated = [emoji, ...recentEmojis.filter(e => e !== emoji)].slice(0, 18);
+    setRecentEmojis(updated);
+    localStorage.setItem('church-recent-emojis', JSON.stringify(updated));
+  };
+
+  // Accurate SMS character counting
+  const calculateSMSInfo = (text: string) => {
+    let totalChars = 0;
+    
+    // Split text into characters and count properly
+    const chars = Array.from(text);
+    for (const char of chars) {
+      const code = char.codePointAt(0);
+      if (!code) continue;
+      
+      // Emoji detection and weight calculation
+      if (code >= 0x1F600 && code <= 0x1F64F) {
+        // Emoticons
+        totalChars += 2;
+      } else if (code >= 0x1F300 && code <= 0x1F5FF) {
+        // Misc Symbols and Pictographs
+        totalChars += 2;
+      } else if (code >= 0x1F680 && code <= 0x1F6FF) {
+        // Transport and Map
+        totalChars += 2;
+      } else if (code >= 0x1F700 && code <= 0x1F77F) {
+        // Alchemical Symbols
+        totalChars += 2;
+      } else if (code >= 0x1F780 && code <= 0x1F7FF) {
+        // Geometric Shapes Extended
+        totalChars += 2;
+      } else if (code >= 0x1F800 && code <= 0x1F8FF) {
+        // Supplemental Arrows-C
+        totalChars += 2;
+      } else if (code >= 0x1F900 && code <= 0x1F9FF) {
+        // Supplemental Symbols and Pictographs
+        totalChars += 2;
+      } else if (code >= 0x2600 && code <= 0x26FF) {
+        // Misc symbols (includes ✝️, ⛪)
+        totalChars += 2;
+      } else if (code >= 0x2700 && code <= 0x27BF) {
+        // Dingbats
+        totalChars += 2;
+      } else if (code >= 0xFE00 && code <= 0xFE0F) {
+        // Variation selectors (don't count separately)
+        continue;
+      } else if (code >= 0x1F3FB && code <= 0x1F3FF) {
+        // Skin tone modifiers (add extra weight)
+        totalChars += 2;
+      } else {
+        // Regular character
+        totalChars += 1;
+      }
+    }
+    
+    // Calculate SMS segments
+    let segments;
+    if (totalChars <= 160) {
+      segments = 1;
+    } else {
+      // Multi-part SMS uses 153 chars per segment due to concatenation headers
+      segments = Math.ceil(totalChars / 153);
+    }
+    
+    return { totalChars, segments };
+  };
+
+  const smsInfo = calculateSMSInfo(content);
   const recipientCount = recipients.reduce((acc, r) => {
     return acc + (r.type === "group" ? getGroupSize(r.id) : 1);
   }, 0);
-  const estimatedCost = selectedChannel === "sms" ? (recipientCount * smsMessages * 0.01) : 0;
+  const estimatedCost = selectedChannel === "sms" ? (recipientCount * smsInfo.segments * 0.01) : 0;
 
   // Sample church groups data
   const churchGroups: GroupData[] = [
@@ -132,7 +241,7 @@ export function Compose() {
   const canProceedToStep2 = selectedChannel !== null;
   const canProceedToStep3 = recipients.length > 0;
   const canSend = content.trim() && recipients.length > 0 && selectedChannel &&
-    (selectedChannel === "sms" || subject.trim());
+    (selectedChannel === "sms" || (selectedChannel === "email" && subject.trim()));
 
   const handleNext = () => {
     if (currentStep === 1 && canProceedToStep2) {
@@ -363,15 +472,15 @@ export function Compose() {
                   </div>
                 </div>
 
-                {/* Tabs for Contacts/Groups */}
-                <div className="border-b mb-6" style={{borderColor: '#E1E8ED'}}>
-                  <div className="flex space-x-8">
+                {/* Prominent Tabs for Contacts/Groups */}
+                <div className="mb-6">
+                  <div className="bg-gray-50 p-1 rounded-lg inline-flex" style={{border: '1px solid #E1E8ED'}}>
                     <button
                       onClick={() => setRecipientTab("contacts")}
-                      className={`py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                      className={`px-6 py-3 text-base font-semibold rounded-md transition-all flex items-center gap-2 min-w-[180px] justify-center ${
                         recipientTab === "contacts"
-                          ? "border-blue-500 text-blue-600"
-                          : "border-transparent text-gray-500 hover:text-gray-700"
+                          ? "bg-white text-blue-600 shadow-sm border border-blue-200"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                       }`}
                     >
                       <Users className="h-4 w-4" />
@@ -379,16 +488,22 @@ export function Compose() {
                     </button>
                     <button
                       onClick={() => setRecipientTab("groups")}
-                      className={`py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                      className={`px-6 py-3 text-base font-semibold rounded-md transition-all flex items-center gap-2 min-w-[180px] justify-center ${
                         recipientTab === "groups"
-                          ? "border-blue-500 text-blue-600"
-                          : "border-transparent text-gray-500 hover:text-gray-700"
+                          ? "bg-white text-blue-600 shadow-sm border border-blue-200"
+                          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                       }`}
                     >
                       <Users className="h-4 w-4" />
                       Groups
                     </button>
                   </div>
+                  <p className="text-sm text-gray-600 mt-3 font-medium">
+                    {recipientTab === "contacts" 
+                      ? "Search and select individual church members" 
+                      : "Choose from organized groups and ministries"
+                    }
+                  </p>
                 </div>
 
                 {/* Tab Content */}
@@ -573,40 +688,143 @@ export function Compose() {
                         </Label>
                         <Input
                           id="subject"
-                          placeholder="What's this message about?"
+                          placeholder="What's this email about?"
                           value={subject}
                           onChange={(e) => setSubject(e.target.value)}
-                          className="text-base"
+                          className={`text-base ${!subject.trim() && selectedChannel === "email" ? "border-red-200 focus:border-red-300" : ""}`}
                         />
+                        {selectedChannel === "email" && !subject.trim() && (
+                          <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Subject line is required for email
+                          </p>
+                        )}
                       </div>
                     )}
 
                     <div>
-                      <Label htmlFor="content" className="text-sm font-semibold block mb-2 text-gray-900">
-                        Your Message
-                      </Label>
-                      <Textarea
-                        id="content"
-                        placeholder={
-                          selectedChannel === "email" 
-                            ? "Write your message here. You can use {firstName} for personalization."
-                            : "Write a clear, concise message. Longer messages may be split into multiple texts."
-                        }
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        className="min-h-[300px] text-base leading-relaxed resize-none"
-                      />
-                      
-                      {selectedChannel === "sms" && (
-                        <div className="mt-2 text-sm">
-                          <span className={content.length > 160 ? "text-orange-600 font-medium" : "text-gray-500"}>
-                            {content.length}/160 characters
-                          </span>
-                          {content.length > 160 && (
-                            <div className="text-orange-600 font-medium">
-                              Will send {smsMessages} messages per person (${(smsMessages * 0.01).toFixed(2)} each)
+                      <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="content" className="text-sm font-semibold text-gray-900">
+                          Your Message
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          {selectedChannel === "email" && (
+                            <div className="relative">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowMergeTags(!showMergeTags)}
+                                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 border-gray-300 hover:border-gray-400"
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                                Merge Tags
+                              </Button>
+                              {showMergeTags && (
+                                <MergeTagsDropdown
+                                  ref={mergeTagsRef}
+                                  onTagSelect={(tag) => {
+                                    if (selectedChannel === "email" && wysiwygRef.current) {
+                                      wysiwygRef.current.insertText(tag);
+                                      setShowMergeTags(false);
+                                      setTimeout(() => {
+                                        wysiwygRef.current?.focus();
+                                      }, 0);
+                                    } else {
+                                      const textarea = contentRef.current;
+                                      if (textarea) {
+                                        const start = textarea.selectionStart;
+                                        const end = textarea.selectionEnd;
+                                        const newContent = content.substring(0, start) + tag + content.substring(end);
+                                        setContent(newContent);
+                                        setShowMergeTags(false);
+                                        // Restore focus and cursor position
+                                        setTimeout(() => {
+                                          textarea.focus();
+                                          textarea.setSelectionRange(start + tag.length, start + tag.length);
+                                        }, 0);
+                                      }
+                                    }
+                                  }}
+                                />
+                              )}
                             </div>
                           )}
+                          <div className="relative">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 border-gray-300 hover:border-gray-400"
+                            >
+                              <Smile className="h-4 w-4" />
+                              Add Emoji
+                            </Button>
+                            {showEmojiPicker && (
+                              <EmojiPicker
+                                ref={emojiPickerRef}
+                                onEmojiSelect={(emoji) => {
+                                  if (selectedChannel === "email" && wysiwygRef.current) {
+                                    wysiwygRef.current.insertText(emoji);
+                                    addToRecentEmojis(emoji);
+                                    setShowEmojiPicker(false);
+                                    setTimeout(() => {
+                                      wysiwygRef.current?.focus();
+                                    }, 0);
+                                  } else {
+                                    const textarea = contentRef.current;
+                                    if (textarea) {
+                                      const start = textarea.selectionStart;
+                                      const end = textarea.selectionEnd;
+                                      const newContent = content.substring(0, start) + emoji + content.substring(end);
+                                      setContent(newContent);
+                                      addToRecentEmojis(emoji);
+                                      setShowEmojiPicker(false);
+                                      // Restore focus and cursor position
+                                      setTimeout(() => {
+                                        textarea.focus();
+                                        textarea.setSelectionRange(start + emoji.length, start + emoji.length);
+                                      }, 0);
+                                    }
+                                  }
+                                }}
+                                searchQuery={emojiSearch}
+                                onSearchChange={setEmojiSearch}
+                                selectedCategory={selectedEmojiCategory}
+                                onCategoryChange={setSelectedEmojiCategory}
+                                recentEmojis={recentEmojis}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {selectedChannel === "email" ? (
+                        <WysiwygEditor
+                          ref={wysiwygRef}
+                          content={content}
+                          onChange={setContent}
+                          placeholder="Write your message here. Use the formatting buttons above to make text bold, italic, or add links. Add merge tags like {FirstName} for personalization."
+                          className="min-h-[300px] text-base leading-relaxed"
+                        />
+                      ) : (
+                        <Textarea
+                          ref={contentRef}
+                          id="content"
+                          placeholder="Write a clear, concise message. Longer messages may be split into multiple texts."
+                          value={content}
+                          onChange={(e) => setContent(e.target.value)}
+                          className="min-h-[300px] text-base leading-relaxed resize-none"
+                        />
+                      )}
+                      
+                      {selectedChannel === "sms" && (
+                        <div className="mt-2">
+                          <SMSCounter
+                            content={content}
+                            smsInfo={smsInfo}
+                          />
                         </div>
                       )}
                     </div>
@@ -630,9 +848,12 @@ export function Compose() {
                             </div>
                             <div className="text-sm">
                               <div className="text-xs text-gray-500 mb-2">Message:</div>
-                              <div className="whitespace-pre-wrap">
-                                {content.replace(/\{firstName\}/g, "John") || "Your message content will appear here as you type..."}
-                              </div>
+                              <div 
+                                className="whitespace-pre-wrap"
+                                dangerouslySetInnerHTML={{
+                                  __html: formatEmailPreview(content) || "Your message content will appear here as you type..."
+                                }}
+                              />
                             </div>
                           </div>
                         ) : (
@@ -641,9 +862,9 @@ export function Compose() {
                             <div className="bg-blue-500 text-white p-3 rounded-lg rounded-bl-none text-sm max-w-[80%]">
                               {content || "Your text message will appear here..."}
                             </div>
-                            {content.length > 160 && (
+                            {smsInfo.segments > 1 && (
                               <div className="text-xs text-orange-600">
-                                Note: This will be sent as {smsMessages} separate messages
+                                Note: This will be sent as {smsInfo.segments} separate messages
                               </div>
                             )}
                           </div>
@@ -712,6 +933,519 @@ export function Compose() {
     </div>
   );
 }
+
+
+// Merge Tags Dropdown Component
+interface MergeTagsDropdownProps {
+  onTagSelect: (tag: string) => void;
+}
+
+const MergeTagsDropdown = React.forwardRef<HTMLDivElement, MergeTagsDropdownProps>(
+  ({ onTagSelect }, ref) => {
+    const mergeTags = [
+      { tag: '{FirstName}', description: 'Member\'s first name', example: 'John' },
+      { tag: '{LastName}', description: 'Member\'s last name', example: 'Smith' },
+      { tag: '{FullName}', description: 'Full name', example: 'John Smith' },
+      { tag: '{Email}', description: 'Email address', example: 'john.smith@email.com' }
+    ];
+
+    return (
+      <div 
+        ref={ref} 
+        className="absolute right-0 top-10 z-10 bg-white rounded-lg shadow-lg border w-80"
+        style={{ border: '1px solid #E1E8ED' }}
+      >
+        <div className="p-4 border-b" style={{ borderColor: '#E1E8ED' }}>
+          <h4 className="font-semibold text-gray-900 text-sm">Personalization Tags</h4>
+          <p className="text-xs text-gray-600 mt-1">Click to insert at cursor position</p>
+        </div>
+        <div className="p-2">
+          {mergeTags.map((item) => (
+            <button
+              key={item.tag}
+              onClick={() => onTagSelect(item.tag)}
+              className="w-full text-left p-3 rounded-md hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-blue-600 text-sm">{item.tag}</div>
+                  <div className="text-xs text-gray-600">{item.description}</div>
+                </div>
+                <div className="text-xs text-gray-500 italic">
+                  {item.example}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="p-3 border-t bg-gray-50 text-xs text-gray-600" style={{ borderColor: '#E1E8ED' }}>
+          <div className="font-medium mb-1">Usage Examples:</div>
+          <div>&quot;Dear {'{FirstName}'}, we hope you can join us...&quot;</div>
+          <div>&quot;Hi {'{FullName}'}, this is a reminder about...&quot;</div>
+        </div>
+      </div>
+    );
+  }
+);
+
+MergeTagsDropdown.displayName = 'MergeTagsDropdown';
+
+// Email Preview Formatter Function
+function formatEmailPreview(content: string): string {
+  if (!content) return '';
+  
+  // For WYSIWYG editor, content is already HTML, just replace merge tags
+  let formatted = content
+    .replace(/\{FirstName\}/g, 'John')
+    .replace(/\{LastName\}/g, 'Smith')
+    .replace(/\{FullName\}/g, 'John Smith')
+    .replace(/\{Email\}/g, 'john.smith@church.org');
+  
+  return formatted;
+}
+
+// Comprehensive emoji data organized by categories
+const EMOJI_DATA = {
+  recent: {
+    name: "Recent",
+    icon: Clock,
+    emojis: [] // Will be populated dynamically
+  },
+  smileys: {
+    name: "Smileys & People",
+    icon: Smile,
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇',
+      '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪', '😝', '🤑',
+      '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬',
+      '🤥', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶',
+      '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮',
+      '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖',
+      '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀',
+      '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻',
+      '😼', '😽', '🙀', '😿', '😾', '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👱‍♀️',
+      '👱', '👱‍♂️', '🧔', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳', '👳‍♂️', '🧕', '👮‍♀️',
+      '👮', '👮‍♂️', '👷‍♀️', '👷', '👷‍♂️', '💂‍♀️', '💂', '💂‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️',
+      '👩‍⚕️', '🧑‍⚕️', '👨‍⚕️', '👩‍🌾', '🧑‍🌾', '👨‍🌾', '👩‍🍳', '🧑‍🍳', '👨‍🍳', '👩‍🎓',
+      '🧑‍🎓', '👨‍🎓', '👩‍🎤', '🧑‍🎤', '👨‍🎤', '👩‍🏫', '🧑‍🏫', '👨‍🏫', '👩‍🏭', '🧑‍🏭',
+      '👨‍🏭', '👩‍💻', '🧑‍💻', '👨‍💻', '👩‍💼', '🧑‍💼', '👨‍💼', '👩‍🔧', '🧑‍🔧', '👨‍🔧',
+      '👩‍🔬', '🧑‍🔬', '👨‍🔬', '👩‍🎨', '🧑‍🎨', '👨‍🎨', '👩‍🚒', '🧑‍🚒', '👨‍🚒', '👩‍✈️',
+      '🧑‍✈️', '👨‍✈️', '👩‍🚀', '🧑‍🚀', '👨‍🚀', '👩‍⚖️', '🧑‍⚖️', '👨‍⚖️', '🙏', '👏', '🤝',
+      '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘', '👌', '🤏', '👈',
+      '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤙', '💪', '🦾', '🖕',
+      '✍️', '🙏', '🦶', '🦵', '💄', '💋', '👄', '🦷', '👅', '👂', '🦻', '👃', '👣',
+      '👁️', '👀', '🧠', '🗣️', '👤', '👥'
+    ]
+  },
+  animals: {
+    name: "Animals & Nature",
+    icon: "🐾",
+    emojis: [
+      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷',
+      '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥',
+      '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞',
+      '🐜', '🦟', '🦗', '🕷️', '🕸️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑',
+      '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆',
+      '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄',
+      '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐓',
+      '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁',
+      '🐀', '🐿️', '🦔', '🌵', '🎄', '🌲', '🌳', '🌴', '🌱', '🌿', '☘️', '🍀', '🎍',
+      '🎋', '🍃', '🍂', '🍁', '🍄', '🐚', '🌾', '💐', '🌷', '🌹', '🥀', '🌺', '🌸',
+      '🌼', '🌻', '🌞', '🌝', '🌛', '🌜', '🌚', '🌕', '🌖', '🌗', '🌘', '🌑', '🌒',
+      '🌓', '🌔', '🌙', '🌎', '🌍', '🌏', '🪐', '💫', '⭐', '🌟', '✨', '⚡', '☄️',
+      '💥', '🔥', '🌪️', '🌈', '☀️', '🌤️', '⛅', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️',
+      '❄️', '☃️', '⛄', '🌬️', '💨', '💧', '💦', '☔', '☂️', '🌊', '🌫️'
+    ]
+  },
+  food: {
+    name: "Food & Drink",
+    icon: "🍎",
+    emojis: [
+      '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑',
+      '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽',
+      '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚',
+      '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕',
+      '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗', '🥘', '🫕', '🥫', '🍝', '🍜', '🍲',
+      '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢',
+      '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿',
+      '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '🫖', '☕', '🍵', '🧃', '🥤', '🧋',
+      '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾', '🧊', '🥄', '🍴',
+      '🍽️', '🥣', '🥡', '🥢', '🧂'
+    ]
+  },
+  activities: {
+    name: "Activities",
+    icon: "⚽",
+    emojis: [
+      '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸',
+      '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋',
+      '🎽', '🛹', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️‍♀️', '🏋️', '🏋️‍♂️',
+      '🤼‍♀️', '🤼', '🤼‍♂️', '🤸‍♀️', '🤸', '🤸‍♂️', '⛹️‍♀️', '⛹️', '⛹️‍♂️', '🤺',
+      '🤾‍♀️', '🤾', '🤾‍♂️', '🏌️‍♀️', '🏌️', '🏌️‍♂️', '🏇', '🧘‍♀️', '🧘', '🧘‍♂️',
+      '🏄‍♀️', '🏄', '🏄‍♂️', '🏊‍♀️', '🏊', '🏊‍♂️', '🤽‍♀️', '🤽', '🤽‍♂️', '🚣‍♀️',
+      '🚣', '🚣‍♂️', '🧗‍♀️', '🧗', '🧗‍♂️', '🚵‍♀️', '🚵', '🚵‍♂️', '🚴‍♀️', '🚴',
+      '🚴‍♂️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫', '🎟️', '🎪',
+      '🤹‍♀️', '🤹', '🤹‍♂️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎵', '🎶',
+      '🥇', '🥈', '🥉', '🏆', '🎯', '🎲', '🎰', '🎳'
+    ]
+  },
+  travel: {
+    name: "Travel & Places",
+    icon: "✈️",
+    emojis: [
+      '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛',
+      '🚜', '🏍️', '🛵', '🚲', '🛴', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠',
+      '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉',
+      '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️',
+      '🛳️', '⛴️', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🗺️', '🗿', '🗽', '🗼', '🏰',
+      '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️',
+      '🗻', '🏕️', '⛺', '🛖', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣',
+      '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🛕', '🕍',
+      '🕎', '⛩️', '🛤️', '🛣️', '🗾', '🎑', '🏞️', '🌅', '🌄', '🌠', '🎇', '🎆', '🌇',
+      '🌆', '🏙️', '🌃', '🌌', '🌉', '🌁'
+    ]
+  },
+  objects: {
+    name: "Objects",
+    icon: "⌚",
+    emojis: [
+      '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💽',
+      '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟',
+      '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳',
+      '📡', '🔋', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💸', '💵', '💴', '💶',
+      '💷', '🪙', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🔧', '🔨', '⚒️', '🛠️', '⛏️',
+      '🪓', '🪚', '🔩', '⚙️', '🪤', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️',
+      '🛡️', '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬',
+      '🕳️', '🩹', '🩺', '💊', '💉', '🧬', '🦠', '🧫', '🧪', '🌡️', '🧹', '🪣', '🧽',
+      '🧴', '🛎️', '🔑', '🗝️', '🚪', '🪑', '🛋️', '🛏️', '🛌', '🧸', '🪆', '🖼️',
+      '🪟', '🪜'
+    ]
+  },
+  symbols: {
+    name: "Symbols",
+    icon: "❤️",
+    emojis: [
+      '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞',
+      '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯',
+      '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐',
+      '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸',
+      '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️',
+      '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢',
+      '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️',
+      '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯',
+      '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️',
+      '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚹', '🚺', '🚼', '⚧️', '🚻', '🚮',
+      '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕',
+      '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'
+    ]
+  },
+  flags: {
+    name: "Flags",
+    icon: "🏁",
+    emojis: [
+      '🏁', '🚩', '🎌', '🏴', '🏳️', '🏳️‍🌈', '🏳️‍⚧️', '🏴‍☠️', '🇦🇨', '🇦🇩', '🇦🇪',
+      '🇦🇫', '🇦🇬', '🇦🇮', '🇦🇱', '🇦🇲', '🇦🇴', '🇦🇶', '🇦🇷', '🇦🇸', '🇦🇹', '🇦🇺',
+      '🇦🇼', '🇦🇽', '🇦🇿', '🇧🇦', '🇧🇧', '🇧🇩', '🇧🇪', '🇧🇫', '🇧🇬', '🇧🇭', '🇧🇮',
+      '🇧🇯', '🇧🇱', '🇧🇲', '🇧🇳', '🇧🇴', '🇧🇶', '🇧🇷', '🇧🇸', '🇧🇹', '🇧🇻', '🇧🇼',
+      '🇧🇾', '🇧🇿', '🇨🇦', '🇨🇨', '🇨🇩', '🇨🇫', '🇨🇬', '🇨🇭', '🇨🇮', '🇨🇰', '🇨🇱',
+      '🇨🇲', '🇨🇳', '🇨🇴', '🇨🇵', '🇨🇷', '🇨🇺', '🇨🇻', '🇨🇼', '🇨🇽', '🇨🇾', '🇨🇿',
+      '🇩🇪', '🇩🇬', '🇩🇯', '🇩🇰', '🇩🇲', '🇩🇴', '🇩🇿', '🇪🇦', '🇪🇨', '🇪🇪', '🇪🇬',
+      '🇪🇭', '🇪🇷', '🇪🇸', '🇪🇹', '🇪🇺', '🇫🇮', '🇫🇯', '🇫🇰', '🇫🇲', '🇫🇴', '🇫🇷',
+      '🇬🇦', '🇬🇧', '🇬🇩', '🇬🇪', '🇬🇫', '🇬🇬', '🇬🇭', '🇬🇮', '🇬🇱', '🇬🇲', '🇬🇳',
+      '🇬🇵', '🇬🇶', '🇬🇷', '🇬🇸', '🇬🇹', '🇬🇺', '🇬🇼', '🇬🇾', '🇭🇰', '🇭🇲', '🇭🇳',
+      '🇭🇷', '🇭🇹', '🇭🇺', '🇮🇨', '🇮🇩', '🇮🇪', '🇮🇱', '🇮🇲', '🇮🇳', '🇮🇴', '🇮🇶',
+      '🇮🇷', '🇮🇸', '🇮🇹', '🇯🇪', '🇯🇲', '🇯🇴', '🇯🇵', '🇰🇪', '🇰🇬', '🇰🇭', '🇰🇮',
+      '🇰🇲', '🇰🇳', '🇰🇵', '🇰🇷', '🇰🇼', '🇰🇾', '🇰🇿', '🇱🇦', '🇱🇧', '🇱🇨', '🇱🇮',
+      '🇱🇰', '🇱🇷', '🇱🇸', '🇱🇹', '🇱🇺', '🇱🇻', '🇱🇾', '🇲🇦', '🇲🇨', '🇲🇩', '🇲🇪',
+      '🇲🇫', '🇲🇬', '🇲🇭', '🇲🇰', '🇲🇱', '🇲🇲', '🇲🇳', '🇲🇴', '🇲🇵', '🇲🇶', '🇲🇷',
+      '🇲🇸', '🇲🇹', '🇲🇺', '🇲🇻', '🇲🇼', '🇲🇽', '🇲🇾', '🇲🇿', '🇳🇦', '🇳🇨', '🇳🇪',
+      '🇳🇫', '🇳🇬', '🇳🇮', '🇳🇱', '🇳🇴', '🇳🇵', '🇳🇷', '🇳🇺', '🇳🇿', '🇴🇲', '🇵🇦',
+      '🇵🇪', '🇵🇫', '🇵🇬', '🇵🇭', '🇵🇰', '🇵🇱', '🇵🇲', '🇵🇳', '🇵🇷', '🇵🇸', '🇵🇹',
+      '🇵🇼', '🇵🇾', '🇶🇦', '🇷🇪', '🇷🇴', '🇷🇸', '🇷🇺', '🇷🇼', '🇸🇦', '🇸🇧', '🇸🇨',
+      '🇸🇩', '🇸🇪', '🇸🇬', '🇸🇭', '🇸🇮', '🇸🇯', '🇸🇰', '🇸🇱', '🇸🇲', '🇸🇳', '🇸🇴',
+      '🇸🇷', '🇸🇸', '🇸🇹', '🇸🇻', '🇸🇽', '🇸🇾', '🇸🇿', '🇹🇦', '🇹🇨', '🇹🇩', '🇹🇫',
+      '🇹🇬', '🇹🇭', '🇹🇯', '🇹🇰', '🇹🇱', '🇹🇲', '🇹🇳', '🇹🇴', '🇹🇷', '🇹🇹', '🇹🇻',
+      '🇹🇼', '🇹🇿', '🇺🇦', '🇺🇬', '🇺🇲', '🇺🇳', '🇺🇸', '🇺🇾', '🇺🇿', '🇻🇦', '🇻🇨',
+      '🇻🇪', '🇻🇬', '🇻🇮', '🇻🇳', '🇻🇺', '🇼🇫', '🇼🇸', '🇽🇰', '🇾🇪', '🇾🇹', '🇿🇦',
+      '🇿🇲', '🇿🇼'
+    ]
+  }
+};
+
+// Church-specific emoji keywords for smart search
+const CHURCH_EMOJI_KEYWORDS = {
+  pray: ['🙏'],
+  prayer: ['🙏'],
+  praying: ['🙏'],
+  heart: ['❤️', '💖', '💕', '💗', '💙', '💚', '💛', '💜', '🧡'],
+  love: ['❤️', '😍', '🥰', '💕', '💖', '💗'],
+  cross: ['✝️'],
+  church: ['⛪', '💒'],
+  worship: ['🙏', '🎵', '🎶', '🎤'],
+  praise: ['🙌', '👏', '🎵'],
+  faith: ['✝️', '🙏', '⛪'],
+  hope: ['🌟', '✨', '🌈'],
+  peace: ['🕊️', '☮️', '🌿'],
+  joy: ['😊', '😄', '🎉', '😁'],
+  blessed: ['🙏', '✨', '🌟'],
+  blessing: ['🙏', '✨', '🌟'],
+  holy: ['✝️', '🙏', '⛪'],
+  spirit: ['🕊️', '✨'],
+  jesus: ['✝️', '🙏'],
+  god: ['✝️', '🙏', '⛪'],
+  bible: ['📖', '📚'],
+  book: ['📖', '📚'],
+  celebrate: ['🎉', '🎊', '🥳'],
+  celebration: ['🎉', '🎊', '🥳'],
+  family: ['👨‍👩‍👧‍👦', '👨‍👩‍👧', '👨‍👩‍👦‍👦', '❤️'],
+  community: ['🤝', '👥', '❤️'],
+  fellowship: ['🤝', '👥', '☕'],
+  welcome: ['🤗', '👋', '😊'],
+  ministry: ['✝️', '🙏', '❤️'],
+  serve: ['🤝', '❤️', '🙏'],
+  service: ['🤝', '❤️', '🙏'],
+  mission: ['✝️', '🌍', '❤️'],
+  grace: ['🙏', '✨', '💝'],
+  mercy: ['🙏', '💙', '✨'],
+  salvation: ['✝️', '🙏', '❤️'],
+  baptism: ['💧', '✝️', '🙏'],
+  communion: ['🍞', '🍷', '✝️'],
+  easter: ['✝️', '🐰', '🥚'],
+  christmas: ['🎄', '⭐', '👶'],
+  sunday: ['⛪', '🙏', '📖'],
+  pastor: ['👨‍💼', '🙏', '📖'],
+  minister: ['👨‍💼', '🙏', '📖'],
+  choir: ['🎵', '🎶', '👥'],
+  music: ['🎵', '🎶', '🎤'],
+  sing: ['🎵', '🎶', '🎤'],
+  angel: ['👼', '✨', '🕊️'],
+  heaven: ['☁️', '✨', '👼'],
+  miracle: ['✨', '🙏', '⭐'],
+  gift: ['🎁', '💝', '🙏'],
+  giving: ['💝', '❤️', '🤝'],
+  tithe: ['💰', '💝', '🙏'],
+  offering: ['💝', '🙏', '❤️']
+};
+
+// Emoji search function
+function searchEmojis(query: string, recentEmojis: string[]): { category: string; emojis: string[] }[] {
+  if (!query.trim()) {
+    return [
+      { 
+        category: 'recent', 
+        emojis: recentEmojis.length > 0 ? recentEmojis : ['🙏', '❤️', '😊', '🎉', '✝️', '⛪'] 
+      }
+    ];
+  }
+
+  const results: { category: string; emojis: string[] }[] = [];
+  const lowerQuery = query.toLowerCase();
+
+  // First check church-specific keywords
+  if (CHURCH_EMOJI_KEYWORDS[lowerQuery as keyof typeof CHURCH_EMOJI_KEYWORDS]) {
+    results.push({
+      category: 'church_keywords',
+      emojis: CHURCH_EMOJI_KEYWORDS[lowerQuery as keyof typeof CHURCH_EMOJI_KEYWORDS]
+    });
+  }
+
+  // Search in all categories
+  Object.entries(EMOJI_DATA).forEach(([categoryKey, categoryData]) => {
+    if (categoryKey === 'recent') return;
+    
+    const matchingEmojis = categoryData.emojis.filter(emoji => {
+      // Simple emoji matching (could be enhanced with emoji names/descriptions)
+      return emoji.includes(lowerQuery) || 
+             categoryData.name.toLowerCase().includes(lowerQuery);
+    });
+
+    if (matchingEmojis.length > 0) {
+      results.push({
+        category: categoryData.name,
+        emojis: matchingEmojis.slice(0, 20) // Limit results
+      });
+    }
+  });
+
+  return results;
+}
+
+// SMS Counter Component
+interface SMSCounterProps {
+  content: string;
+  smsInfo: { totalChars: number; segments: number };
+}
+
+function SMSCounter({ content, smsInfo }: SMSCounterProps) {
+  const { totalChars, segments } = smsInfo;
+  const isMultiSegment = segments > 1;
+  const isNearLimit = segments === 1 && totalChars > 140;
+  
+  return (
+    <div className="text-sm space-y-1">
+      <div className="flex items-center gap-3">
+        <span className={`font-medium ${
+          isMultiSegment ? "text-orange-600" : 
+          isNearLimit ? "text-yellow-600" : 
+          "text-gray-500"
+        }`}>
+          {totalChars}/{segments === 1 ? 160 : segments * 153} characters
+        </span>
+        
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+          isMultiSegment ? "bg-orange-100 text-orange-700" :
+          isNearLimit ? "bg-yellow-100 text-yellow-700" :
+          "bg-green-100 text-green-700"
+        }`}>
+          {segments} message{segments !== 1 ? 's' : ''}
+        </span>
+      </div>
+      
+      {isMultiSegment && (
+        <div className="flex items-start gap-2 text-orange-600">
+          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div className="text-xs">
+            <div className="font-medium">Multi-segment SMS</div>
+            <div>Will send {segments} separate messages (${(segments * 0.01).toFixed(2)} per person)</div>
+          </div>
+        </div>
+      )}
+      
+      {isNearLimit && !isMultiSegment && (
+        <div className="text-xs text-yellow-600 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Approaching character limit
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Emoji Picker Component
+interface EmojiPickerProps {
+  onEmojiSelect: (emoji: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  selectedCategory: string;
+  onCategoryChange: (category: string) => void;
+  recentEmojis: string[];
+}
+
+const EmojiPicker = React.forwardRef<HTMLDivElement, EmojiPickerProps>(
+  ({ onEmojiSelect, searchQuery, onSearchChange, selectedCategory, onCategoryChange, recentEmojis }, ref) => {
+    const searchResults = searchEmojis(searchQuery, recentEmojis);
+    const isSearching = searchQuery.trim().length > 0;
+
+    const categories = [
+      { key: 'recent', ...EMOJI_DATA.recent, emojis: recentEmojis },
+      { key: 'smileys', ...EMOJI_DATA.smileys },
+      { key: 'animals', ...EMOJI_DATA.animals },
+      { key: 'food', ...EMOJI_DATA.food },
+      { key: 'activities', ...EMOJI_DATA.activities },
+      { key: 'travel', ...EMOJI_DATA.travel },
+      { key: 'objects', ...EMOJI_DATA.objects },
+      { key: 'symbols', ...EMOJI_DATA.symbols },
+      { key: 'flags', ...EMOJI_DATA.flags }
+    ];
+
+    const currentCategory = categories.find(cat => cat.key === selectedCategory) || categories[0];
+    const displayEmojis = isSearching ? searchResults : [{ category: currentCategory.name, emojis: currentCategory.emojis }];
+
+    return (
+      <div 
+        ref={ref} 
+        className="absolute right-0 top-10 z-10 bg-white rounded-lg shadow-lg border w-96 max-h-96"
+        style={{ border: '1px solid #E1E8ED' }}
+      >
+        {/* Search Bar */}
+        <div className="p-4 border-b" style={{ borderColor: '#E1E8ED' }}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search emojis (try: pray, heart, church)"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-10 text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => onSearchChange('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Category Tabs - Only show when not searching */}
+        {!isSearching && (
+          <div className="flex overflow-x-auto border-b" style={{ borderColor: '#E1E8ED' }}>
+            {categories.filter(cat => cat.key === 'recent' ? recentEmojis.length > 0 : true).map((category) => (
+              <button
+                key={category.key}
+                onClick={() => onCategoryChange(category.key)}
+                className={`flex-shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+                  selectedCategory === category.key
+                    ? 'border-blue-500 text-blue-600 bg-blue-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+                title={category.name}
+              >
+                {category.key === 'recent' ? (
+                  <Clock className="h-4 w-4" />
+                ) : (
+                  <span className="text-sm">{typeof category.icon === 'string' ? category.icon : '📝'}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Emoji Grid */}
+        <div className="p-4 max-h-64 overflow-y-auto">
+          {displayEmojis.map((section, sectionIndex) => (
+            <div key={sectionIndex} className="mb-4 last:mb-0">
+              {isSearching && (
+                <h4 className="text-xs font-medium text-gray-600 mb-2 uppercase tracking-wider">
+                  {section.category}
+                </h4>
+              )}
+              {section.emojis.length > 0 ? (
+                <div className="grid grid-cols-8 gap-1">
+                  {section.emojis.map((emoji, index) => (
+                    <button
+                      key={`${emoji}-${index}`}
+                      onClick={() => onEmojiSelect(emoji)}
+                      className="p-2 text-lg rounded hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      title={emoji}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 text-sm py-4">
+                  {section.category === 'Recent' ? 'No recent emojis' : 'No emojis found'}
+                </div>
+              )}
+            </div>
+          ))}
+          
+          {isSearching && searchResults.length === 0 && (
+            <div className="text-center text-gray-500 text-sm py-8">
+              <Search className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+              <div>No emojis found for "{searchQuery}"</div>
+              <div className="text-xs mt-1">Try searching for: pray, heart, church, love</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+);
+
+EmojiPicker.displayName = 'EmojiPicker';
 
 // Helper function to get group size
 function getGroupSize(groupId: string): number {

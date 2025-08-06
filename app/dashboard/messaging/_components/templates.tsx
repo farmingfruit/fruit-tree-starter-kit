@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { 
-  FileTemplate, 
+  FileText, 
   Plus, 
   Search, 
   Edit3, 
@@ -84,7 +84,7 @@ const sampleTemplates = [
 ];
 
 const categories = [
-  { id: "all", name: "All Templates", icon: FileTemplate, color: "blue" },
+  { id: "all", name: "All Templates", icon: FileText, color: "blue" },
   { id: "welcome", name: "Welcome", icon: Heart, color: "purple" },
   { id: "reminder", name: "Reminders", icon: Clock, color: "orange" },
   { id: "pastoral", name: "Pastoral Care", icon: Users, color: "green" },
@@ -192,7 +192,7 @@ export function Templates() {
           <Card className="border-2 col-span-full">
             <CardContent className="py-12">
               <div className="text-center">
-                <FileTemplate className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                 <p className="text-xl text-muted-foreground">No templates found</p>
                 <p className="text-base text-muted-foreground mt-2">
                   {searchQuery ? "Try adjusting your search or filters" : "Create your first template to get started"}

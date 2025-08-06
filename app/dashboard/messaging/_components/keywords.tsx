@@ -314,7 +314,7 @@ export function Keywords() {
               <strong>3. Track engagement:</strong> Monitor how often each keyword is used to understand what your members need most.
             </p>
             <p>
-              <strong>4. Personalization:</strong> Use variables like {{church}}, {{address}}, and {{phone}} to automatically include your church details.
+              <strong>4. Personalization:</strong> Use variables like {`{{church}}`}, {`{{address}}`}, and {`{{phone}}`} to automatically include your church details.
             </p>
           </div>
         </CardContent>
